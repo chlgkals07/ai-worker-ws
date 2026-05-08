@@ -32,16 +32,23 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def generate_launch_description():
-    # Declare launch arguments
+    # Launch arguments let you override defaults from the command line.
+    # e.g. ros2 launch ffw_moveit_config moveit.launch.py use_sim:=true start_rviz:=false
     declared_arguments = [
+        # Whether to open RViz with the MoveIt plugin for visualization.
         DeclareLaunchArgument(
             'start_rviz', default_value='true', description='Whether to execute rviz2'
         ),
+        # IMPORTANT: set to true when running with Gazebo.
+        # Gazebo publishes its own /clock topic and all nodes must use sim time,
+        # otherwise timestamps will mismatch and motion planning will fail.
         DeclareLaunchArgument(
             'use_sim',
             default_value='false',
             description='Whether to use simulation time',
         ),
+        # MoveIt can save/load motion plans to a local SQLite database.
+        # Not needed for our use case but required by move_group at startup.
         DeclareLaunchArgument(
             'warehouse_sqlite_path',
             default_value=os.path.expanduser('~/.ros/warehouse_ros.sqlite'),
@@ -59,6 +66,13 @@ def generate_launch_description():
     warehouse_sqlite_path = LaunchConfiguration('warehouse_sqlite_path')
     publish_robot_description_semantic = LaunchConfiguration('publish_robot_description_semantic')
 
+    # MoveItConfigsBuilder automatically reads all YAMLs from ffw_moveit_config/config/:
+    #   ffw.srdf          -> planning groups (arm_r, arm_l), end effectors
+    #   kinematics.yaml   -> IK solver (KDL) per group
+    #   moveit_controllers.yaml -> which ROS2 controllers MoveIt sends trajectories to
+    #   joint_limits.yaml -> max velocity/acceleration per joint
+    #   ompl_planning.yaml -> motion planner settings (RRTConnect etc.)
+    # You do NOT need to load these manually in your own code.
     moveit_config = (
         MoveItConfigsBuilder(robot_name='ffw', package_name='ffw_moveit_config')
         .robot_description_semantic(Path('config') / 'ffw.srdf')
@@ -70,20 +84,28 @@ def generate_launch_description():
         'warehouse_host': warehouse_sqlite_path,
     }
 
+    # move_group is the MoveIt brain — this is the node your Python code talks to.
+    # It receives pose/joint goals, runs IK, plans a collision-free trajectory,
+    # and sends it to the appropriate controller (arm_l_controller, arm_r_controller).
+    # Your moveit_client.py does NOT talk to the controllers directly —
+    # it sends goals to move_group and move_group handles the rest.
     move_group_node = Node(
         package='moveit_ros_move_group',
         executable='move_group',
         output='screen',
         parameters=[
-            moveit_config.to_dict(),
+            moveit_config.to_dict(),       # passes all YAML configs to move_group
             warehouse_ros_config,
             {
-                'use_sim_time': use_sim,
+                'use_sim_time': use_sim,                                        # must match Gazebo when simulating
                 'publish_robot_description_semantic': publish_robot_description_semantic,
             },
         ],
     )
 
+    # RViz with the MoveIt plugin loaded (moveit.rviz config).
+    # Lets you visualize planned paths, set pose goals interactively,
+    # and inspect the planning scene (collision objects).
     rviz_config_file = PathJoinSubstitution(
         [FindPackageShare('ffw_moveit_config'), 'config', 'moveit.rviz']
     )
@@ -95,11 +117,11 @@ def generate_launch_description():
         output='log',
         arguments=['-d', rviz_config_file],
         parameters=[
-            moveit_config.robot_description,
-            moveit_config.robot_description_semantic,
-            moveit_config.robot_description_kinematics,
-            moveit_config.planning_pipelines,
-            moveit_config.joint_limits,
+            moveit_config.robot_description,            # URDF (robot geometry)
+            moveit_config.robot_description_semantic,   # SRDF (planning groups)
+            moveit_config.robot_description_kinematics, # kinematics.yaml (IK solver)
+            moveit_config.planning_pipelines,           # planner configs
+            moveit_config.joint_limits,                 # joint_limits.yaml
             warehouse_ros_config,
             {
                 'use_sim_time': use_sim,

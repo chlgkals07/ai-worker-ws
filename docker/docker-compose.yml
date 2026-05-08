@@ -24,5 +24,6 @@ services:
       - /tmp/.docker.xauth:/tmp/.docker.xauth:rw
       - ./workspace:/workspace
       - ../:/root/ros2_ws/src/ai_worker/
+      - ../../pymoveit2:/root/ros2_ws/src/pymoveit2
       - /var/run/robotis/agent_sockets/ai_worker:/var/run/agent
     privileged: true
