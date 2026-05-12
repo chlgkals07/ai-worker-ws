@@ -22,6 +22,7 @@ setup(
             'test_move_to_pose = ai_worker_manipulation.tests.test_move_to_pose:main',
             'move_home = ai_worker_manipulation.tests.move_home:main',
             'move_to_pose = ai_worker_manipulation.tests.move_to_pose:main',
+            'demo_0513 = ai_worker_manipulation.tests.demo_0513:main',
         ],
     },
 )
