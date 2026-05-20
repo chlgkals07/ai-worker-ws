@@ -1,3 +1,6 @@
 [submodule "pymoveit2"]
 	path = pymoveit2
 	url = https://github.com/AndrejOrsula/pymoveit2.git
+[submodule "gpd"]
+	path = gpd
+	url = https://github.com/atenpas/gpd.git
