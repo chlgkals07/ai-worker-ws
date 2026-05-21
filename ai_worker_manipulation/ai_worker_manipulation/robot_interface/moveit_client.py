@@ -171,4 +171,5 @@ class MoveItClient:
 
 
     def shutdown(self):
+        self.node.destroy_node()
         rclpy.shutdown()

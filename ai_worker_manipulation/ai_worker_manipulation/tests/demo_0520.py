@@ -48,6 +48,7 @@ def main():
     pick(client, gripper, grasp_pose)
     place(client, gripper, place_pose)
     client.move_to_home()
+    gripper.shutdown()
     client.shutdown()
 
 
