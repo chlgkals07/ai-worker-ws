@@ -146,10 +146,12 @@ class GripperController:
     def open(self, side: str = 'both'):
         """Open gripper. side: 'left' | 'right' | 'both'"""
         self.control(side, self.OPEN)
+        time.sleep(1.0)
 
     def close(self, side: str = 'both'):
         """Close gripper. side: 'left' | 'right' | 'both'"""
         self.control(side, self.CLOSED)
+        time.sleep(1.0)
 
     def shutdown(self):
         self._node.destroy_node()

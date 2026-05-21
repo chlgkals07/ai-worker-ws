@@ -136,6 +136,17 @@ class MoveItClient:
             return None
 
         return result.pose
+    
+    def check_reachable(self, pose: Pose, arm: Arm = Arm.RIGHT) -> bool:
+        moveit2 = self._arm(arm)
+        future = moveit2.compute_ik_async(pose)
+        if future is None:
+            return False
+        while not future.done():
+            rclpy.spin_once(self.node, timeout_sec=0.1)
+        result = moveit2.get_compute_ik_result(future)
+        return result is not None and len(result.solution.joint_state.position) > 0
+    
 #Others
     def _to_move_result(self, success: bool, moveit2: MoveIt2) -> MoveResult:
         if success:
