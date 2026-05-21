@@ -200,7 +200,7 @@ class GraspAssessment:
         return list(self._lut.keys())
 
     # ── 1단계: 닫힘 중 평가 ───────────────────────────────────────────────────
-    def assess_on_close(self, side: str, object_name: str) -> bool:
+    def assess_on_close(self, side: str, object_name: str, timeout: float = 5.0) -> bool:
         """
         Close 명령 실행과 동시에 호출.
         position 과 effort 조건이 STABLE_DURATION 초 이상 유지되면 True 반환.
@@ -223,13 +223,14 @@ class GraspAssessment:
         self._running    = True
         stable_start: Optional[float] = None
         poll_interval    = 1.0 / POLL_HZ
+        deadline         = time.time() + timeout
 
         self._node.get_logger().info(
             f'[GraspAssessment] 닫힘 중 평가 시작 | side={side} obj={object_name} '
             f'pos_thresh={pos_thresh} eff_thresh={eff_thresh}'
         )
 
-        while self._running:
+        while self._running and time.time() < deadline:
             rclpy.spin_once(self._node, timeout_sec=poll_interval)
 
             pos = self._avg_position(side)
@@ -285,8 +286,10 @@ class GraspAssessment:
             else:
                 stable_start = None
 
-        # stop() 에 의해 루프 종료
-        self._node.get_logger().info('[GraspAssessment] 평가 중단 (open 명령).')
+        if time.time() >= deadline:
+            self._node.get_logger().warn('[GraspAssessment] ❌ 평가 시간 초과.')
+        else:
+            self._node.get_logger().info('[GraspAssessment] 평가 중단 (open 명령).')
         return False
 
     # ── 3단계: 이동 중 슬립 감지 ─────────────────────────────────────────────

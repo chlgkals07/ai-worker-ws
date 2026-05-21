@@ -10,6 +10,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/data',
+            ['ai_worker_manipulation/data/object_lut.json']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -24,7 +26,9 @@ setup(
             'move_to_pose = ai_worker_manipulation.tests.move_to_pose:main',
             'demo_0513 = ai_worker_manipulation.tests.demo_0513:main',
             'gpd_dual_view = ai_worker_manipulation.tests.gpd_dual_view_node:main',
-            'pc_transformer = ai_worker_manipulation.skill_primitives.point_cloud_transformer_node:main'
+            'pc_transformer = ai_worker_manipulation.skill_primitives.point_cloud_transformer_node:main',
+            'demo_0520 = ai_worker_manipulation.tests.demo_0520:main',
+            'test_gpd_open3d = ai_worker_manipulation.tests.test_gpd_open3d:main',
         ],
     },
 )

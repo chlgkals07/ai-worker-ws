@@ -73,7 +73,9 @@ def pick(client: MoveItClient, gripper: GripperController, grasp_pose: Pose) -> 
     if client.cartesian_move(grasp_pose) != MoveResult.SUCCEEDED:
         return False
     log.info("Grasping")
-    gripper.Grasp('right', 'ETC')
+    if not gripper.Grasp('right', 'ETC'):
+        log.error("Grasp failed — aborting pick")
+        return False
     log.info("Retracting to pre-grasp")
     if client.cartesian_move(pre) != MoveResult.SUCCEEDED:
         return False

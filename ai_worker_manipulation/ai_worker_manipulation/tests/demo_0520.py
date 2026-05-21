@@ -5,7 +5,7 @@ from ai_worker_manipulation.skill_primitives.pick_and_place import wait_for_gras
 from geometry_msgs.msg import Pose
 
 # Set True to skip GPD and use hardcoded poses for testing in RViz
-DUMMY_MODE = False
+DUMMY_MODE = True
 
 # Top-down grasp: 180° around X → end-effector points down
 # Adjust positions to match your object in RViz
@@ -41,6 +41,7 @@ def main():
         grasp_pose = wait_for_grasp(client)
         if grasp_pose is None:
             log.error("Failed to receive grasp result.")
+            gripper.shutdown()
             client.shutdown()
             return
         place_pose = DUMMY_PLACE
