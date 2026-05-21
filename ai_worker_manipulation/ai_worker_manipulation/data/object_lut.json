@@ -14,6 +14,13 @@
       "effort_min": 0.5,
       "grip_force_n": 20,
       "description": "500ml 페트병"
+    },
+      "ETC": {
+      "size_mm": 0,
+      "position_min": 1000,
+      "effort_min": 0.5,
+      "grip_force_n": 20,
+      "description": "Non-object"
     }
   }
 }

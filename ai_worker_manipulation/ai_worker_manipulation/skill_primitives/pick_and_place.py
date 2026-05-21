@@ -62,19 +62,18 @@ def pre_grasp_of(pose: Pose, offset: float = 0.15) -> Pose:
     return pre
 
 
-def pick(client: MoveItClient, gripper: GripperController, grasp: Pose) -> bool:
+def pick(client: MoveItClient, gripper: GripperController, grasp_pose: Pose) -> bool:
     log = client.node.get_logger()
-    pre = pre_grasp_of(grasp)
+    pre = pre_grasp_of(grasp_pose)
 
     log.info("Moving to pre-grasp")
     if client.move_to_pose(pre) != MoveResult.SUCCEEDED:
         return False
     log.info("Cartesian move to grasp")
-    if client.cartesian_move(grasp) != MoveResult.SUCCEEDED:
+    if client.cartesian_move(grasp_pose) != MoveResult.SUCCEEDED:
         return False
-    log.info("Closing gripper")
-    gripper.close('right')
-    #여기에 grasp stability 추가
+    log.info("Grasping")
+    gripper.Grasp('right', 'ETC')
     log.info("Retracting to pre-grasp")
     if client.cartesian_move(pre) != MoveResult.SUCCEEDED:
         return False
@@ -94,7 +93,7 @@ def place(client: MoveItClient, gripper: GripperController, place_pose: Pose) ->
     if client.cartesian_move(place_pose) != MoveResult.SUCCEEDED:
         return False
     log.info("Opening gripper")
-    gripper.open('right')
+    gripper.Open('right')
     log.info("Retracting from place")
     if client.cartesian_move(pre) != MoveResult.SUCCEEDED:
         return False
