@@ -48,6 +48,16 @@ class MoveItClient:
             use_move_group_action=True,
         )
 
+        # Wait for move_group action servers before accepting any motion commands
+        self.node.get_logger().info('Waiting for move_group action servers...')
+        while not self.moveit2_r._MoveIt2__move_action_client.wait_for_server(timeout_sec=1.0):
+            self.node.get_logger().warn('Right arm move_group not yet available...')
+            rclpy.spin_once(self.node, timeout_sec=0.1)
+        while not self.moveit2_l._MoveIt2__move_action_client.wait_for_server(timeout_sec=1.0):
+            self.node.get_logger().warn('Left arm move_group not yet available...')
+            rclpy.spin_once(self.node, timeout_sec=0.1)
+        self.node.get_logger().info('move_group action servers ready')
+
         # Spin until joint states are available before any motion method is called
         while self.moveit2_r.joint_state is None or self.moveit2_l.joint_state is None:
             rclpy.spin_once(self.node, timeout_sec=0.1)
