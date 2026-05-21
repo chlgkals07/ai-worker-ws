@@ -1,4 +1,4 @@
-from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
+from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient, MoveResult
 from ai_worker_manipulation.robot_interface.gripper_controller import GripperController
 from geometry_msgs.msg import PoseArray, Pose
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
@@ -48,8 +48,8 @@ def wait_for_grasp(client: MoveItClient, timeout: float = 30.0) -> Pose | None:
     return None
 
 
-
 def pre_grasp_of(pose: Pose, offset: float = 0.15) -> Pose:
+    # offset: trial and error 필요. 너무 멀면 경로 생성 실패, 너무 가까우면 충돌 위험. 15cm 정도가 적당할 것으로 예상
     q = pose.orientation
     r = Rotation.from_quat([q.x, q.y, q.z, q.w]).as_matrix()
     approach_vector = r[:, 2]  # test_gpd_open3d: R = [binormal|axis|approach] → approach = col 2
@@ -61,34 +61,42 @@ def pre_grasp_of(pose: Pose, offset: float = 0.15) -> Pose:
     pre.orientation = pose.orientation
     return pre
 
-    #offset을 어떻게 할지 trial and error 필요. 너무 멀면 경로 생성 실패, 너무 가까우면 충돌 위험. 15cm 정도가 적당할 것으로 예상
 
-
-def pick(client: MoveItClient, gripper: GripperController, grasp_pose: Pose):
+def pick(client: MoveItClient, gripper: GripperController, grasp: Pose) -> bool:
     log = client.node.get_logger()
-    pre = pre_grasp_of(grasp_pose)
+    pre = pre_grasp_of(grasp)
 
     log.info("Moving to pre-grasp")
-    client.move_to_pose(pre)
+    if client.move_to_pose(pre) != MoveResult.SUCCEEDED:
+        return False
     log.info("Cartesian move to grasp")
-    client.cartesian_move(grasp_pose)
+    if client.cartesian_move(grasp) != MoveResult.SUCCEEDED:
+        return False
     log.info("Closing gripper")
     gripper.close('right')
-    # TODO: grasp stability/result 체크 추가 — 실패 시 return False, 미션 단계에서 재시도
+    #여기에 grasp stability 추가
     log.info("Retracting to pre-grasp")
-    client.cartesian_move(pre)
-    #더 나은 방법이 있는지 검토 필요
+    if client.cartesian_move(pre) != MoveResult.SUCCEEDED:
+        return False
+
+    return True
 
 
-def place(client: MoveItClient, gripper: GripperController, place_pose: Pose):
+def place(client: MoveItClient, gripper: GripperController, place_pose: Pose) -> bool:
     log = client.node.get_logger()
     pre = pre_grasp_of(place_pose)
 
     log.info("Moving to pre-place")
-    client.move_to_pose(pre)
+    if client.move_to_pose(pre) != MoveResult.SUCCEEDED:
+        return False
+    # TODO: z floor check — cartesian_move이 테이블에 닿지 않도록
     log.info("Cartesian move to place")
-    client.cartesian_move(place_pose)
+    if client.cartesian_move(place_pose) != MoveResult.SUCCEEDED:
+        return False
     log.info("Opening gripper")
     gripper.open('right')
     log.info("Retracting from place")
-    client.cartesian_move(pre)
+    if client.cartesian_move(pre) != MoveResult.SUCCEEDED:
+        return False
+
+    return True
