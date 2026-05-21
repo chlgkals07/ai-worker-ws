@@ -56,32 +56,48 @@ def pre_grasp_of(pose: Pose, offset: float = 0.15) -> Pose:
     #offset을 어떻게 할지 trial and error 필요. 너무 멀면 경로 생성 실패, 너무 가까우면 충돌 위험. 15cm 정도가 적당할 것으로 예상
 
 
-def pick(client: MoveItClient, gripper: GripperController, grasp: Pose):
+def pick(client: MoveItClient, gripper: GripperController, grasp: Pose) -> bool:
     log = client.node.get_logger()
     pre = pre_grasp_of(grasp)
 
     log.info("Moving to pre-grasp")
-    client.move_to_pose(pre)
+    if not client.move_to_pose(pre):
+        return False
     log.info("Cartesian move to grasp")
-    client.cartesian_move(grasp)
+    if not client.cartesian_move(grasp):
+        return False
     log.info("Closing gripper")
-    gripper.close('right')
+    try:
+        gripper.close('right')
+    except:
+        return False
     #여기에 grasp stability 추가
     log.info("Retracting to pre-grasp")
-    client.cartesian_move(pre)
+    if not client.cartesian_move(pre):
+        return False
+
+    return True    
 
     #더 나은 방법이 있는지 검토 필요
 
 
-def place(client: MoveItClient, gripper: GripperController, place_pose: Pose):
+def place(client: MoveItClient, gripper: GripperController, place_pose: Pose) -> bool:
     log = client.node.get_logger()
     pre = pre_grasp_of(place_pose)
 
     log.info("Moving to pre-place")
-    client.move_to_pose(pre)
+    if not client.move_to_pose(pre):
+        return False
     log.info("Cartesian move to place")
-    client.cartesian_move(place_pose)
+    if not client.cartesian_move(place_pose):
+        return False
     log.info("Opening gripper")
-    gripper.open('right')
+    try:
+        gripper.open('right')
+    except:
+        return False
     log.info("Retracting from place")
-    client.cartesian_move(pre)
+    if not client.cartesian_move(pre):
+        return False
+
+    return True    

@@ -149,7 +149,20 @@ class MoveItClient:
     
     def check_reachable(self, pose: Pose, arm: Arm = Arm.RIGHT) -> bool:
         moveit2 = self._arm(arm)
-        future = moveit2.compute_ik_async(pose)
+        position = [
+            pose.position.x,
+            pose.position.y,
+            pose.position.z,
+        ]
+
+        quat_xyzw = [
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w,
+        ]
+
+        future = moveit2.compute_ik_async(position, quat_xyzw)
         if future is None:
             return False
         while not future.done():

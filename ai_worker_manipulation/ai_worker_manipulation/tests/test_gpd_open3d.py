@@ -2,6 +2,9 @@ import open3d as o3d
 import numpy as np
 import subprocess
 import os
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseArray, Pose
 
 def capture_from_viewpoint(pcd_full, camera_location):
     _, pt_map = pcd_full.hidden_point_removal(camera_location, radius=100)
@@ -11,21 +14,36 @@ def parse_grasp_poses(output):
     grasps = []
     lines = output.split('\n')
     current_grasp = {}
+
     for line in lines:
         if 'Grasp' in line and 'score:' in line:
             if current_grasp:
                 grasps.append(current_grasp)
+
             score_str = line.split('score:')[1].replace(')', '').strip()
             current_grasp = {'score': float(score_str)}
+
         elif 'position:' in line and current_grasp:
             vals = line.split('position:')[1].strip().split()
             current_grasp['position'] = np.array([float(v) for v in vals[:3]])
+
         elif 'approach:' in line and current_grasp:
             vals = line.split('approach:')[1].strip().split()
             current_grasp['approach'] = np.array([float(v) for v in vals[:3]])
+
+        elif 'binormal:' in line and current_grasp:
+            vals = line.split('binormal:')[1].strip().split()
+            current_grasp['binormal'] = np.array([float(v) for v in vals[:3]])
+
+        elif 'axis:' in line and current_grasp:
+            vals = line.split('axis:')[1].strip().split()
+            current_grasp['axis'] = np.array([float(v) for v in vals[:3]])
+
     if current_grasp:
         grasps.append(current_grasp)
+
     return grasps
+
 
 def filter_grasps_by_approach(grasps, camera_positions, object_center=np.array([0,0,0])):
     valid_grasps = []
@@ -44,7 +62,143 @@ def filter_grasps_by_approach(grasps, camera_positions, object_center=np.array([
             valid_grasps.append(grasp)
     return valid_grasps
 
-def run_gpd(pcd_path, scene_name, camera_positions):
+
+def normalize(v):
+    norm = np.linalg.norm(v)
+
+    if norm < 1e-8:
+        return v
+
+    return v / norm
+
+
+def rotation_matrix_to_quaternion(R):
+    q = np.empty(4)
+    trace = np.trace(R)
+
+    if trace > 0.0:
+        s = 0.5 / np.sqrt(trace + 1.0)
+        q[3] = 0.25 / s
+        q[0] = (R[2, 1] - R[1, 2]) * s
+        q[1] = (R[0, 2] - R[2, 0]) * s
+        q[2] = (R[1, 0] - R[0, 1]) * s
+    else:
+        if R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+            s = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+            q[3] = (R[2, 1] - R[1, 2]) / s
+            q[0] = 0.25 * s
+            q[1] = (R[0, 1] + R[1, 0]) / s
+            q[2] = (R[0, 2] + R[2, 0]) / s
+        elif R[1, 1] > R[2, 2]:
+            s = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+            q[3] = (R[0, 2] - R[2, 0]) / s
+            q[0] = (R[0, 1] + R[1, 0]) / s
+            q[1] = 0.25 * s
+            q[2] = (R[1, 2] + R[2, 1]) / s
+        else:
+            s = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+            q[3] = (R[1, 0] - R[0, 1]) / s
+            q[0] = (R[0, 2] + R[2, 0]) / s
+            q[1] = (R[1, 2] + R[2, 1]) / s
+            q[2] = 0.25 * s
+
+    q = q / np.linalg.norm(q)
+
+    return q
+
+
+def quaternion_from_grasp(grasp):
+    if "approach" in grasp and "binormal" in grasp and "axis" in grasp:
+        approach = normalize(grasp["approach"])
+        binormal = normalize(grasp["binormal"])
+        axis = normalize(grasp["axis"])
+
+        R = np.column_stack((approach, binormal, axis))
+
+        return rotation_matrix_to_quaternion(R)
+
+    approach = normalize(grasp["approach"])
+
+    up = np.array([0.0, 0.0, 1.0])
+
+    if abs(np.dot(approach, up)) > 0.95:
+        up = np.array([0.0, 1.0, 0.0])
+
+    y_axis = normalize(np.cross(up, approach))
+    z_axis = normalize(np.cross(approach, y_axis))
+
+    R = np.column_stack((approach, y_axis, z_axis))
+
+    return rotation_matrix_to_quaternion(R)
+
+
+
+class GraspResultPublisher(Node):
+    def __init__(self):
+        super().__init__("gpd_grasp_result_publisher")
+
+        self.publisher = self.create_publisher(
+            PoseArray,
+            "/grasp_poses",
+            10
+        )
+
+    def publish_grasps(self, grasps, frame_id="world"):
+        if len(grasps) == 0:
+            self.get_logger().warn("No valid grasps to publish.")
+            return
+
+        sorted_grasps = sorted(
+            grasps,
+            key=lambda g: g["score"],
+            reverse=True
+        )
+
+        msg = PoseArray()
+        msg.header.frame_id = frame_id
+
+        for grasp in sorted_grasps:
+            if "position" not in grasp:
+                continue
+
+            if "approach" not in grasp:
+                continue
+
+            pose = Pose()
+
+            position = grasp["position"]
+            qx, qy, qz, qw = quaternion_from_grasp(grasp)
+
+            pose.position.x = float(position[0])
+            pose.position.y = float(position[1])
+            pose.position.z = float(position[2])
+
+            pose.orientation.x = float(qx)
+            pose.orientation.y = float(qy)
+            pose.orientation.z = float(qz)
+            pose.orientation.w = float(qw)
+
+            msg.poses.append(pose)
+
+        if len(msg.poses) == 0:
+            self.get_logger().warn("No poses were added to PoseArray.")
+            return
+
+        for _ in range(3):
+            msg.header.stamp = self.get_clock().now().to_msg()
+            self.publisher.publish(msg)
+            rclpy.spin_once(self, timeout_sec=0.05)
+
+        self.get_logger().info(
+            f"Published {len(msg.poses)} grasp poses to /grasp_poses"
+        )
+
+        self.get_logger().info(
+            f"Top grasp score: {sorted_grasps[0]['score']:.4f}"
+        )
+
+
+def run_gpd(pcd_path, scene_name, camera_positions, grasp_publisher):
     print(f"\n{'='*50}")
     print(f"Scene: {scene_name}")
     print(f"{'='*50}")
@@ -66,11 +220,43 @@ def run_gpd(pcd_path, scene_name, camera_positions):
 
     grasps = parse_grasp_poses(result.stdout)
     valid = filter_grasps_by_approach(grasps, camera_positions)
+
     print(f"\n필터링 후 유효한 grasp: {len(valid)}/{len(grasps)}개")
+
     for i, g in enumerate(valid):
         print(f"  Valid Grasp {i} (score: {g['score']:.2f})")
         print(f"    position: {g['position']}")
         print(f"    approach: {g['approach']}")
+
+    valid_sorted = sorted(
+        valid,
+        key=lambda g: g["score"],
+        reverse=True
+    )
+
+    if len(valid_sorted) == 0:
+        print("\n유효한 grasp가 없습니다.")
+        return None
+
+    print("\nScore 기준 정렬된 valid grasp")
+    for i, g in enumerate(valid_sorted):
+        print(f"  Grasp {i} (score: {g['score']:.4f})")
+        print(f"    position: {g['position']}")
+        print(f"    approach: {g['approach']}")
+
+    print("\nTop Grasp")
+    print(f"  score: {valid_sorted[0]['score']:.4f}")
+    print(f"  position: {valid_sorted[0]['position']}")
+    print(f"  approach: {valid_sorted[0]['approach']}")
+
+    grasp_publisher.publish_grasps(
+        valid,
+        frame_id="world"
+    )
+
+    return valid_sorted[0]
+
+        
 
 # =============================================
 # AI Worker 양팔 카메라 시점 (위에서 비스듬히)
@@ -103,4 +289,17 @@ pcd_combined = pcd_combined.voxel_down_sample(voxel_size=0.003)
 print(f"포인트 수: {len(pcd_combined.points)}")
 
 o3d.io.write_point_cloud("/tmp/test_bunny_dual.pcd", pcd_combined)
-run_gpd("/tmp/test_bunny_dual.pcd", "Bunny 양팔 카메라 시점", camera_positions)
+
+rclpy.init()
+
+grasp_publisher = GraspResultPublisher()
+
+run_gpd(
+    "/tmp/test_bunny_dual.pcd",
+    "Bunny 양팔 카메라 시점",
+    camera_positions,
+    grasp_publisher
+)
+
+grasp_publisher.destroy_node()
+rclpy.shutdown()
