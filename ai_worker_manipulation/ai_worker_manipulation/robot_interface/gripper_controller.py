@@ -1,19 +1,31 @@
-# Controls the gripper joints via ROS2 JointTrajectory publishers.
-# GripperDriver integration deferred — uses topic-based control for now.
+# Controls the gripper joints independently of MoveIt2.
+# Handles open, close, and grasp stability checks.
+# Reads gripper state from /joint_states topic.
+
+"""
+Reusable gripper controller library.
+
+Usage from another script:
+    from ai_worker_manipulation.robot_interface.gripper_controller import GripperController
+
+    gc = GripperController()
+    gc.control('left', 0.5)   # set left gripper to 0.5
+    gc.control('right', 0.0)  # open right gripper
+    gc.control('both', 1.0)   # close both grippers
+    gc.open('both')
+    gc.close('left')
+    gc.shutdown()
+
+Joint range:
+    0.0 = open
+    1.0 = closed
+"""
 
 import time
-import threading
-from typing import Optional
-
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-
-from ai_worker_manipulation.skill_primitives.grasp_assesment import GraspAssessment
-
-
-MAX_GRASP_RETRY = 3
 
 
 class GripperController:
@@ -56,8 +68,6 @@ class GripperController:
         ]
 
         self._current_positions = {}
-        self._assessment = GraspAssessment(self._node)
-        self._moving_thread: Optional[threading.Thread] = None
 
         self._node.get_logger().info('Waiting for /joint_states...')
         self._wait_for_joint_states()
@@ -119,6 +129,7 @@ class GripperController:
     # Public API
     # ------------------------------------------------------------------
     def control(self, side: str, position: float):
+        """Set gripper position. side: 'left' | 'right' | 'both', position: 0.0~1.0"""
         if side == 'both':
             self._send('left', position)
             self._send('right', position)
@@ -126,42 +137,14 @@ class GripperController:
             self._send(side, position)
 
     def open(self, side: str = 'both'):
-        self._assessment.stop()
-        if self._moving_thread and self._moving_thread.is_alive():
-            self._moving_thread.join(timeout=1.0)
+        """Open gripper. side: 'left' | 'right' | 'both'"""
         self.control(side, self.OPEN)
         time.sleep(1.0)
 
     def close(self, side: str = 'both'):
+        """Close gripper. side: 'left' | 'right' | 'both'"""
         self.control(side, self.CLOSED)
         time.sleep(1.0)
-
-    # Uppercase aliases for compatibility with gripper_controller calls
-    def Open(self, side: str):
-        self.open(side)
-
-    def Close(self, side: str):
-        self.close(side)
-
-    def Grasp(self, side: str, object_name: str) -> bool:
-        for attempt in range(1, MAX_GRASP_RETRY + 1):
-            self._node.get_logger().info(
-                f'[GripperController] Grasp({side}, {object_name}) — 시도 {attempt}/{MAX_GRASP_RETRY}'
-            )
-            self.Close(side)
-            grasped = self._assessment.assess_on_close(side, object_name)
-
-            if grasped:
-                self._node.get_logger().info(f'[GripperController] 파지 성공! ({side}/{object_name})')
-                return True
-
-            self._node.get_logger().warn(f'[GripperController] 파지 실패 — 재시도.')
-            self.Open(side)
-
-        self._node.get_logger().error(
-            f'[GripperController] Grasp({side}, {object_name}) — {MAX_GRASP_RETRY}회 모두 실패!'
-        )
-        return False
 
     def shutdown(self):
         self._node.destroy_node()

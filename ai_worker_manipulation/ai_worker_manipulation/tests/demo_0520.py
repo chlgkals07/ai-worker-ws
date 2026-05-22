@@ -46,8 +46,18 @@ def main():
             return
         place_pose = DUMMY_PLACE
 
-    pick(client, gripper, grasp_pose)
-    place(client, gripper, place_pose)
+    if not pick(client, gripper, grasp_pose):
+        log.error("Pick failed — aborting")
+        gripper.shutdown()
+        client.shutdown()
+        return
+
+    if not place(client, gripper, place_pose):
+        log.error("Place failed — aborting")
+        gripper.shutdown()
+        client.shutdown()
+        return
+
     client.move_to_home()
     gripper.shutdown()
     client.shutdown()

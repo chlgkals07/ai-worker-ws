@@ -28,6 +28,7 @@ setup(
             'gpd_dual_view = ai_worker_manipulation.tests.gpd_dual_view_node:main',
             'pc_transformer = ai_worker_manipulation.skill_primitives.point_cloud_transformer_node:main',
             'demo_0520 = ai_worker_manipulation.tests.demo_0520:main',
+            'demo_0521 = ai_worker_manipulation.tests.demo_0521:main',
             'test_gpd_open3d = ai_worker_manipulation.tests.test_gpd_open3d:main',
         ],
     },

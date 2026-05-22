@@ -245,14 +245,14 @@ class GraspAssessment:
 
             # ── 개별 조건 평가 ────────────────────────────────────────────
             # 닫히면서 position 이 커짐(0→). 물체를 잡으면 pos_thresh 이상 유지.
-            position_ok = pos >= pos_thresh
+            position_ok = pos < pos_thresh
             effort_ok   = eff >  eff_thresh
 
             # ERR 출력
             if not position_ok:
                 self._node.get_logger().error(
                     f'[ERR] Position 조건 미충족 | '
-                    f'pos={pos:.1f} < threshold={pos_thresh}'
+                    f'pos={pos:.1f} >= threshold={pos_thresh}'
                 )
             if not effort_ok:
                 self._node.get_logger().error(
@@ -292,66 +292,33 @@ class GraspAssessment:
             self._node.get_logger().info('[GraspAssessment] 평가 중단 (open 명령).')
         return False
 
-    # ── 3단계: 이동 중 슬립 감지 ─────────────────────────────────────────────
-    def assess_moving(
-        self,
-        side: str,
-        object_name: str,
-        current_goal_current: float,
-    ) -> float:
-        """
-        이동 중 지속적으로 파지 상태를 감시.
-        슬립 감지 시 ERR 출력 + 파지력 10% 증가.
-        open 명령(stop()) 수신 시 즉시 종료.
-
-        Parameters
-        ----------
-        side                : 'left' | 'right'
-        object_name         : LUT 오브젝트 이름
-        current_goal_current: 현재 Goal Current 값
-
-        Returns
-        -------
-        float : 최종 Goal Current 값 (슬립 증가분 반영)
-        """
-        entry      = self._get_lut_entry(object_name)
-        pos_thresh = float(entry['position_min'])
-        eff_thresh = float(entry['effort_min'])
-
-        self._running  = True
-        goal_current   = current_goal_current
-        poll_interval  = 1.0 / POLL_HZ
-
-        self._node.get_logger().info(
-            f'[GraspAssessment] 이동 중 평가 시작 | side={side} obj={object_name}'
-        )
-
-        while self._running:
-            rclpy.spin_once(self._node, timeout_sec=poll_interval)
-
-            pos = self._avg_position(side)
-            eff = self._avg_effort(side)
-
-            if pos is None:
-                continue
-
-            position_ok = pos >= pos_thresh
-            effort_ok   = eff >  eff_thresh
-            is_grasping = position_ok and effort_ok
-
-            if not is_grasping:
-                # ── 슬립 감지 ─────────────────────────────────────────────
-                self._node.get_logger().error(
-                    '[ERR] 파지력 증가 필요 (Increase grasp force)'
-                )
-                self._node.get_logger().error('[ERR] Slip!')
-
-                goal_current *= (1.0 + GRASP_FORCE_INC)
-                self._node.get_logger().warn(
-                    f'[GraspAssessment] Goal Current → {goal_current:.2f} '
-                    f'(+{GRASP_FORCE_INC*100:.0f}%)'
-                )
-                # 호출측에서 실제 Goal Current 레지스터를 업데이트해야 함
-
-        self._node.get_logger().info('[GraspAssessment] 이동 중 평가 종료 (open 명령).')
-        return goal_current
+    # ── 3단계: 이동 중 슬립 감지 — GripperDriver 준비 후 활성화 ─────────────────
+    # def assess_moving(
+    #     self,
+    #     side: str,
+    #     object_name: str,
+    #     current_goal_current: float,
+    # ) -> float:
+    #     """
+    #     이동 중 지속적으로 파지 상태를 감시.
+    #     슬립 감지 시 ERR 출력 + 파지력 10% 증가.
+    #     GripperDriver.set_goal_current() 필요 — 준비 후 활성화.
+    #     """
+    #     entry      = self._get_lut_entry(object_name)
+    #     pos_thresh = float(entry['position_min'])
+    #     eff_thresh = float(entry['effort_min'])
+    #     self._running = True
+    #     goal_current  = current_goal_current
+    #     poll_interval = 1.0 / POLL_HZ
+    #     while self._running:
+    #         rclpy.spin_once(self._node, timeout_sec=poll_interval)
+    #         pos = self._avg_position(side)
+    #         eff = self._avg_effort(side)
+    #         if pos is None:
+    #             continue
+    #         position_ok = pos < pos_thresh
+    #         effort_ok   = eff > eff_thresh
+    #         if not (position_ok and effort_ok):
+    #             self._node.get_logger().error('[ERR] Slip detected!')
+    #             goal_current *= (1.0 + GRASP_FORCE_INC)
+    #     return goal_current

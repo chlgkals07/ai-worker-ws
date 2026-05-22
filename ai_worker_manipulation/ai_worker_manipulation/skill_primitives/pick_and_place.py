@@ -1,5 +1,6 @@
 from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient, MoveResult
 from ai_worker_manipulation.robot_interface.gripper_controller import GripperController
+from ai_worker_manipulation.skill_primitives.grasp_assesment import GraspAssessment
 from geometry_msgs.msg import PoseArray, Pose
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 import rclpy
@@ -72,9 +73,11 @@ def pick(client: MoveItClient, gripper: GripperController, grasp_pose: Pose) -> 
     log.info("Cartesian move to grasp")
     if client.cartesian_move(grasp_pose) != MoveResult.SUCCEEDED:
         return False
-    log.info("Grasping")
-    if not gripper.Grasp('right', 'ETC'):
-        log.error("Grasp failed — aborting pick")
+    log.info("Closing gripper")
+    gripper.close('right')
+    ga = GraspAssessment(client.node)
+    if not ga.assess_on_close('right', 'ETC'):
+        log.error("Grasp assessment failed — aborting pick")
         return False
     log.info("Retracting to pre-grasp")
     if client.cartesian_move(pre) != MoveResult.SUCCEEDED:
