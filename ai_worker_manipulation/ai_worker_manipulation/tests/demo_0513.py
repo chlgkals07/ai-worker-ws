@@ -1,7 +1,8 @@
 from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient, MoveResult
-from ai_worker_manipulation.skill_primitives.environment import setup_environment
+from ai_worker_manipulation.ai_worker_manipulation.mission_control.environment import setup_environment
 from ai_worker_manipulation.robot_interface.gripper_controller import GripperController
 from geometry_msgs.msg import Pose
+import rclpy
 import time
 
 INTERMEDIATE_JOINTS = [0.0, -0.5, 0.0, -1.0, 0.0, 0.5, 0.0]
@@ -14,6 +15,7 @@ INTERMEDIATE_JOINTS = [0.0, -0.5, 0.0, -1.0, 0.0, 0.5, 0.0]
 #     return True
 
 def main():
+    rclpy.init()
     client = MoveItClient()
     log = client.node.get_logger()
 
@@ -59,7 +61,8 @@ def main():
     log.info(f'move_to_home:   {client.move_to_home().value}')
 
     log.info('YAY')
-    client.shutdown()
+    client.destroy()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

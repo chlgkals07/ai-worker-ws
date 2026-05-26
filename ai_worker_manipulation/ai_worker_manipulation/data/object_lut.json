@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "RH-P12-RN 기반 파지 LUT",
+    "position_min : 그리퍼 raw position (0=열림, 1150=닫힘) 중 물체가 있을 때 최소값",
+    "              즉 close(740) 명령 후 position이 이 값보다 작아야 물체가 끼어 있음",
+    "effort_min   : /joint_states effort 절댓값 기준 (단위: Nm, 시뮬/하드웨어 따라 다름)",
+    "size_mm      : 물체 폭 (참고용)",
+    "grip_force_n : 목표 파지력 (참고용, RH-P12-RN 최대 170N)"
+  ],
+  "objects": {
+    "bottle": {
+      "size_mm": 70,
+      "position_min": 400,
+      "effort_min": 0.5,
+      "grip_force_n": 20,
+      "description": "500ml 페트병"
+    },
+
+    "ETC": {
+      "size_mm": 0,
+      "position_min": 1000,
+      "effort_min": 0.5,
+      "grip_force_n": 20,
+      "description": "NONE"
+    }
+  }
+}

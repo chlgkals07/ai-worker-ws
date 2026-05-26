@@ -1,6 +1,6 @@
+# [추가] STOMP 독립 파이프라인 설정 파일 — OMPL seed 주입 후처리에 사용
 planning_plugins:
-  - ompl_interface/OMPLPlanner
-# The order of the elements in the adapter corresponds to the order they are processed by the motion planning pipeline.
+  - stomp_moveit/StompPlanner
 request_adapters:
   - default_planning_request_adapters/ResolveConstraintFrames
   - default_planning_request_adapters/ValidateWorkspaceBounds
@@ -8,20 +8,14 @@ request_adapters:
   - default_planning_request_adapters/CheckStartStateCollision
 response_adapters:
   - default_planning_response_adapters/AddTimeOptimalParameterization
+  - default_planning_response_adapters/AddRuckigTrajectorySmoothing
   - default_planning_response_adapters/ValidateSolution
   - default_planning_response_adapters/DisplayMotionPath
-
-planner_configs:
-  RRTConnect:
-    type: geometric::RRTConnect
-    range: 0.2
-
-arm_r:
-  default_planner_config: RRTConnect
-  planner_configs:
-    - RRTConnect
-
-arm_l:
-  default_planner_config: RRTConnect
-  planner_configs:
-    - RRTConnect
+num_timesteps: 60
+num_iterations: 40
+num_iteration_for_last_smoothing: 5
+num_rollouts: 30
+max_rollouts: 30
+exponentiated_cost_sensitivity: 0.5
+control_cost_weight: 0.0
+delta_t: 0.1

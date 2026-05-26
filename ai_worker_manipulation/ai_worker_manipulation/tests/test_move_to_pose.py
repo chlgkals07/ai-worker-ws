@@ -31,6 +31,7 @@ def make_pose(x, y, z, qx, qy, qz, qw) -> Pose:
 
 
 def main():
+    rclpy.init()
     client = MoveItClient()
     log = client.node.get_logger()
 
@@ -44,7 +45,8 @@ def main():
         success = client.move_to_pose(pose)
         log.info(f'Result: {"SUCCESS" if success else "FAILED"}')
 
-    client.shutdown()
+    client.destroy()
+    rclpy.shutdown()
 
 
 if __name__ == '__main__':

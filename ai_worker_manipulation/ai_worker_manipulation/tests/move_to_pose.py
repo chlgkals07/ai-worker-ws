@@ -14,6 +14,7 @@ Examples:
 """
 
 import sys
+import rclpy
 from geometry_msgs.msg import Pose
 from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
 
@@ -42,12 +43,14 @@ def main():
     pose.orientation.z = qz
     pose.orientation.w = qw
 
+    rclpy.init()
     client = MoveItClient()
     log = client.node.get_logger()
     log.info(f'Moving to ({x}, {y}, {z})')
     success = client.move_to_pose(pose)
     log.info(f'Result: {"SUCCESS" if success else "FAILED"}')
-    client.shutdown()
+    client.destroy()
+    rclpy.shutdown()
 
 
 if __name__ == '__main__':

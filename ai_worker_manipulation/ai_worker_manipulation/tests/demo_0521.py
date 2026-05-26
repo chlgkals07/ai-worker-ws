@@ -1,7 +1,8 @@
 from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
-from ai_worker_manipulation.skill_primitives.environment import setup_environment
+from ai_worker_manipulation.ai_worker_manipulation.mission_control.environment import setup_environment
 from ai_worker_manipulation.robot_interface.gripper_controller import GripperController
 from geometry_msgs.msg import Pose
+import rclpy
 
 
 
@@ -24,6 +25,7 @@ PLACE     = _pose(0.35,  0.0, 0.75)
 
 
 def main():
+    rclpy.init()
     client  = MoveItClient()
     log     = client.node.get_logger()
     gripper = GripperController(node=client.node)
@@ -76,8 +78,8 @@ def main():
     finally:
         gripper.open('right')
         client.move_to_home()
-        gripper.shutdown()
-        client.shutdown()
+        client.destroy()
+        rclpy.shutdown()
 
 
 

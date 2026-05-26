@@ -76,6 +76,7 @@ def generate_launch_description():
     moveit_config = (
         MoveItConfigsBuilder(robot_name='ffw', package_name='ffw_moveit_config')
         .robot_description_semantic(Path('config') / 'ffw.srdf')
+        .planning_pipelines(pipelines=['ompl', 'stomp', 'pilz_industrial_motion_planner'])
         .to_moveit_configs()
     )
 

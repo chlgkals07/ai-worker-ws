@@ -1,8 +1,9 @@
 from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
-from ai_worker_manipulation.skill_primitives.environment import setup_environment
+from ai_worker_manipulation.ai_worker_manipulation.mission_control.environment import setup_environment
 from ai_worker_manipulation.robot_interface.gripper_controller import GripperController
 from ai_worker_manipulation.skill_primitives.pick_and_place import wait_for_grasp, pick, place
 from geometry_msgs.msg import Pose
+import rclpy
 
 # Set True to skip GPD and use hardcoded poses for testing in RViz
 DUMMY_MODE = False
@@ -24,6 +25,7 @@ DUMMY_PLACE.orientation.w = 1.0
 
 
 def main():
+    rclpy.init()
     client = MoveItClient()
     log = client.node.get_logger()
     gripper = GripperController(node=client.node)
@@ -49,8 +51,8 @@ def main():
 
     finally:
         client.move_to_home()
-        gripper.shutdown()
-        client.shutdown()
+        client.destroy()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
