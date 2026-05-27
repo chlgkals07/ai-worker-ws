@@ -18,15 +18,6 @@ setup(
     description='Manipulation stack for the 2026 Humanoid Challenge',
     license='Apache-2.0',
     entry_points={
-        'console_scripts': [
-            'test_move_to_pose = ai_worker_manipulation.tests.test_move_to_pose:main',
-            'move_home = ai_worker_manipulation.tests.move_home:main',
-            'move_to_pose = ai_worker_manipulation.tests.move_to_pose:main',
-            'demo_0513 = ai_worker_manipulation.tests.demo_0513:main',
-            'demo_0520 = ai_worker_manipulation.tests.demo_0520:main',
-            'demo_0521 = ai_worker_manipulation.tests.demo_0521:main',
-            'gpd_dual_view = ai_worker_manipulation.tests.gpd_dual_view_node:main',
-            'pc_transformer = ai_worker_manipulation.skill_primitives.point_cloud_transformer_node:main'
-        ],
+        'console_scripts': [],
     },
 )
