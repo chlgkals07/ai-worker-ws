@@ -76,6 +76,10 @@ def generate_launch_description():
     moveit_config = (
         MoveItConfigsBuilder(robot_name='ffw', package_name='ffw_moveit_config')
         .robot_description_semantic(Path('config') / 'ffw.srdf')
+        # Explicit load required: MoveItConfigsBuilder auto-discovery looks for
+        # 'ffw_kinematics.yaml' (robot-prefixed) and silently falls back to KDL
+        # if 'kinematics.yaml' is not found under that name.
+        .robot_description_kinematics(Path('config') / 'kinematics.yaml')
         .to_moveit_configs()
     )
 

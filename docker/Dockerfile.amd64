@@ -57,6 +57,10 @@ RUN cd ${COLCON_WS} && \
     rosdep install -i --from-path src --rosdistro $ROS_DISTRO --skip-keys="librealsense2" -y && \
     rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y \
+    ros-${ROS_DISTRO}-pick-ik \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash && \
     cd ${COLCON_WS} && \
     colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release"

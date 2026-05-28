@@ -193,6 +193,38 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
+    trajectory_params_file = PathJoinSubstitution([
+        FindPackageShare('ffw_bringup'),
+        'config',
+        model,
+        'ffw_sg2_follower_initial_positions.yaml',
+    ])
+
+    joint_trajectory_executor_left = Node(
+        package='ffw_bringup',
+        executable='joint_trajectory_executor',
+        name='arm_l_joint_trajectory_executor',
+        parameters=[trajectory_params_file],
+        output='screen',
+    )
+    joint_trajectory_executor_right = Node(
+        package='ffw_bringup',
+        executable='joint_trajectory_executor',
+        name='arm_r_joint_trajectory_executor',
+        parameters=[trajectory_params_file],
+        output='screen',
+    )
+
+    init_position_event_handler = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=robot_controller_spawner,
+            on_exit=[
+                joint_trajectory_executor_left,
+                joint_trajectory_executor_right,
+            ]
+        )
+    )
+
     return LaunchDescription([
         *declared_arguments,
         RegisterEventHandler(
@@ -214,4 +246,5 @@ def generate_launch_description():
         robot_state_pub_node,
         gz_spawn_entity,
         rviz,
+        init_position_event_handler,
     ])

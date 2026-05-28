@@ -18,6 +18,9 @@ setup(
     description='Manipulation stack for the 2026 Humanoid Challenge',
     license='Apache-2.0',
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            'test_moveit_client = ai_worker_manipulation.tests.test_moveit_client:main',
+            'test_arm_motion    = ai_worker_manipulation.tests.test_arm_motion:main',
+        ],
     },
 )
