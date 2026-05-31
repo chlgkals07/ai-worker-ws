@@ -10,6 +10,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/data',
+            ['ai_worker_manipulation/data/object_lut.json']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -21,6 +23,9 @@ setup(
         'console_scripts': [
             'test_moveit_client = ai_worker_manipulation.tests.test_moveit_client:main',
             'test_arm_motion    = ai_worker_manipulation.tests.test_arm_motion:main',
+            'test_gripper           = ai_worker_manipulation.tests.test_gripper:main',
+            'test_pick_and_place    = ai_worker_manipulation.tests.test_pick_and_place:main',
+            'test_tf_gpd            = ai_worker_manipulation.tests.test_tf_gpd:main',
         ],
     },
 )
