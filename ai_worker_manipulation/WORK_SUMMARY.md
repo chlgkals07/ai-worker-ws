@@ -17,15 +17,16 @@ wrist 카메라 → PCD 캡처 → GPD grasp 검출 → 로봇 실행
 |pcd data gpd 테스트| `test_gpd_wrist150.py` |
 | 전체 pick 시퀀스 | `skill_primitives/pick_skill.py` |
 
----
 
-### 테스트 스크립트
+
+## 2. 테스트 스크립트
 | 파일 | 역할 |
 |------|------|
 | `tests/move_wrist_capture_pose.py` | 손목 PCD 캡처 자세로 이동 |
 | `tests/demo_gpd_grasp.py` | 하드코딩 grasp pose 실행 테스트 |
+| `test_gpd_wrist150.py` | 오프라인 GPD 검증 + Open3D 시각화 |
 
----
+
 
 ## 3. 실행 방법
 
@@ -34,6 +35,22 @@ wrist 카메라 → PCD 캡처 → GPD grasp 검출 → 로봇 실행
 cd ~/ros2_ws && colcon build --packages-select ai_worker_manipulation
 source install/setup.bash
 ```
+
+## GPD 빌드 확인
+
+GPD C++ 바이너리가 필요합니다.
+
+```bash
+cd ~/ros2_ws/src/ai_worker/gpd
+mkdir -p build && cd build
+cmake .. && make -j$(nproc)
+ls detect_grasps   # 바이너리 확인
+```
+
+변경된 GPD 파일:
+- `gpd/CMakeLists.txt`
+- `gpd/cfg/eigen_params.cfg` (camera_position 등 파라미터)
+- `gpd/src/gpd/grasp_detector.cpp`
 
 ---
 
@@ -62,6 +79,8 @@ ros2 run ai_worker_manipulation move_wrist_capture_pose -- --skip-home
 | `--keep-gripper` | False | 그리퍼 열기 생략 |
 
 ---
+
+
 
 ### 3-2. test_gpd_wrist150.py — 오프라인 GPD 검증 + Open3D 시각화
 
@@ -162,25 +181,8 @@ APPROACH_HEIGHT   = 0.10    # pre-grasp 오프셋 - 물체 위 +z 방향 값 조
 ----> gpd가 반환하는 값들로 교체 가능
 
 
-## 5. GPD 빌드 확인
 
-GPD C++ 바이너리가 필요합니다.
-
-```bash
-cd ~/ros2_ws/src/ai_worker/gpd
-mkdir -p build && cd build
-cmake .. && make -j$(nproc)
-ls detect_grasps   # 바이너리 확인
-```
-
-변경된 GPD 파일:
-- `gpd/CMakeLists.txt`
-- `gpd/cfg/eigen_params.cfg` (camera_position 등 파라미터)
-- `gpd/src/gpd/grasp_detector.cpp`
-
----
-
-## 6. 사용 흐름
+## 4. 사용 흐름
 
 ```bash
 # 터미널 1: 캡처 자세로 이동 (PCD 촬영 준비)
