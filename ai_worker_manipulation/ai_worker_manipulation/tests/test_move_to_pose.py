@@ -7,11 +7,12 @@ Usage (inside container, after Gazebo + MoveIt are running):
 """
 
 import rclpy
+from rclpy.node import Node
 from geometry_msgs.msg import Pose
-from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
+
+from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient, MoveResult
 
 # (x, y, z, qx, qy, qz, qw) in base_link frame
-# Poses chosen to be safely in the right arm's reachable workspace
 TARGET_POSES = [
     (0.40, -0.20, 0.90, 0.0, 0.0, 0.0, 1.0),
     (0.35, -0.30, 0.85, 0.0, 0.0, 0.0, 1.0),
@@ -31,8 +32,10 @@ def make_pose(x, y, z, qx, qy, qz, qw) -> Pose:
 
 
 def main():
-    client = MoveItClient()
-    log = client.node.get_logger()
+    rclpy.init()
+    node   = Node('test_move_to_pose')
+    client = MoveItClient(node)
+    log    = node.get_logger()
 
     log.info('Moving to home position')
     client.move_to_home()
@@ -41,10 +44,12 @@ def main():
         x, y, z = args[:3]
         pose = make_pose(*args)
         log.info(f'[{i+1}/{len(TARGET_POSES)}] Moving to ({x}, {y}, {z})')
-        success = client.move_to_pose(pose)
-        log.info(f'Result: {"SUCCESS" if success else "FAILED"}')
+        result = client.move_to_pose(pose)
+        log.info(f'Result: {result.value}')
 
-    client.shutdown()
+    client.destroy()
+    node.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == '__main__':

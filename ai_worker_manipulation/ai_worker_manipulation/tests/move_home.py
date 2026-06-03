@@ -6,16 +6,25 @@ Usage:
   ros2 run ai_worker_manipulation move_home
 """
 
-from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
+import rclpy
+from rclpy.node import Node
+
+from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient, MoveResult
 
 
 def main():
-    client = MoveItClient()
-    log = client.node.get_logger()
+    rclpy.init()
+    node   = Node('move_home')
+    client = MoveItClient(node)
+    log    = node.get_logger()
+
     log.info('Moving to home position')
-    success = client.move_to_home()
-    log.info(f'Result: {"SUCCESS" if success else "FAILED"}')
-    client.shutdown()
+    result = client.move_to_home()
+    log.info(f'Result: {result.value}')
+
+    client.destroy()
+    node.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == '__main__':

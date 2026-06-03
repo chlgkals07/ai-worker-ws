@@ -1,6 +1,7 @@
 import rclpy
 import tf2_ros
-import tf2_sensor_msgs
+import tf2_geometry_msgs  # registers PoseStamped transform support  # noqa: F401
+import tf2_sensor_msgs    # registers PointCloud2 transform support
 from geometry_msgs.msg import PoseStamped, Pose
 from sensor_msgs.msg import PointCloud2
 
@@ -12,14 +13,16 @@ class tf_transformer:
 
     def transform_cloud(self, cloud_msg: PointCloud2, target_frame: str) -> PointCloud2 | None:
         try:
-            return self.buffer.transform(cloud_msg, target_frame)    
+            return self.buffer.transform(cloud_msg, target_frame)
         except tf2_ros.TransformException as e:
             self.node.get_logger().warn(f'tranform_cloud failed: {e}')
             return None
 
-        
     def transform_pose(self, pose_msg: PoseStamped, target_frame: str) -> Pose | None:
         try:
+            # Use Time(0) if stamp is zero — means "use latest available transform"
+            if pose_msg.header.stamp.sec == 0 and pose_msg.header.stamp.nanosec == 0:
+                pose_msg.header.stamp = rclpy.time.Time().to_msg()
             transformed = self.buffer.transform(pose_msg, target_frame)
             return transformed.pose
         except tf2_ros.TransformException as e:

@@ -1,15 +1,14 @@
-from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
-from ai_worker_manipulation.skill_primitives.environment import setup_environment
-from ai_worker_manipulation.robot_interface.gripper_controller import GripperController
-from ai_worker_manipulation.skill_primitives.pick_and_place import wait_for_grasp, pick, place
+import rclpy
+from rclpy.node import Node
 from geometry_msgs.msg import Pose
 
-# Set True to skip GPD and use hardcoded poses for testing in RViz
+from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
+from ai_worker_manipulation.robot_interface.gripper_controller import GripperInterface
+from ai_worker_manipulation.skill_primitives.environment import setup_environment
+from ai_worker_manipulation.skill_primitives.pick_and_place import wait_for_grasp, pick, place
+
 DUMMY_MODE = False
 
-# Front approach grasp (identity orientation -> approach vector along +X)
-# Coordinates verified working in demo_0513
-# pick() will auto-compute pre_grasp 15cm back along X: (0.20, -0.25, 0.80)
 DUMMY_GRASP = Pose()
 DUMMY_GRASP.position.x = 0.35
 DUMMY_GRASP.position.y = -0.25
@@ -24,9 +23,11 @@ DUMMY_PLACE.orientation.w = 1.0
 
 
 def main():
-    client = MoveItClient()
-    log = client.node.get_logger()
-    gripper = GripperController(node=client.node)
+    rclpy.init()
+    node    = Node('demo_0520')
+    client  = MoveItClient(node)
+    log     = node.get_logger()
+    gripper = GripperInterface(node=node)
     setup_environment(client)
 
     gripper.open('right')
@@ -49,8 +50,9 @@ def main():
 
     finally:
         client.move_to_home()
-        gripper.shutdown()
-        client.shutdown()
+        client.destroy()
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

@@ -44,7 +44,7 @@ def filter_grasps_by_approach(grasps, camera_positions, object_center=np.array([
             valid_grasps.append(grasp)
     return valid_grasps
 
-def run_gpd(pcd_path, scene_name, camera_positions):
+def run_gpd(pcd_path, scene_name, camera_positions, object_center=None):
     print(f"\n{'='*50}")
     print(f"Scene: {scene_name}")
     print(f"{'='*50}")
@@ -56,16 +56,23 @@ def run_gpd(pcd_path, scene_name, camera_positions):
         text=True,
         env={**os.environ, "LIBGL_ALWAYS_SOFTWARE": "1"}
     )
+
+    if result.returncode != 0:
+        print(f"[ERROR] GPD crashed (returncode={result.returncode})")
+        print(f"[STDERR] {result.stderr[-500:]}")
+        print(f"[STDOUT] {result.stdout[-500:]}")
+        return
+
     lines = result.stdout.split('\n')
     printing = False
     for line in lines:
-        if 'GRASP POSES' in line or 'Selected grasps' in line:
+        if 'Selected grasps' in line:
             printing = True
         if printing:
             print(line)
 
     grasps = parse_grasp_poses(result.stdout)
-    valid = filter_grasps_by_approach(grasps, camera_positions)
+    valid = filter_grasps_by_approach(grasps, camera_positions, object_center)
     print(f"\n필터링 후 유효한 grasp: {len(valid)}/{len(grasps)}개")
     for i, g in enumerate(valid):
         print(f"  Valid Grasp {i} (score: {g['score']:.2f})")
@@ -102,5 +109,8 @@ pcd_combined, _ = pcd_combined.remove_statistical_outlier(nb_neighbors=20, std_r
 pcd_combined = pcd_combined.voxel_down_sample(voxel_size=0.003)
 print(f"포인트 수: {len(pcd_combined.points)}")
 
+object_center = np.asarray(pcd_combined.get_center())
+print(f"Object center: {object_center}")
+
 o3d.io.write_point_cloud("/tmp/test_bunny_dual.pcd", pcd_combined)
-run_gpd("/tmp/test_bunny_dual.pcd", "Bunny 양팔 카메라 시점", camera_positions)
+run_gpd("/tmp/test_bunny_dual.pcd", "Bunny 양팔 카메라 시점", camera_positions, object_center)

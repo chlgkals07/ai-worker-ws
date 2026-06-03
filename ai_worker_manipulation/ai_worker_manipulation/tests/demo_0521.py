@@ -1,8 +1,10 @@
-from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
-from ai_worker_manipulation.skill_primitives.environment import setup_environment
-from ai_worker_manipulation.robot_interface.gripper_controller import GripperController
+import rclpy
+from rclpy.node import Node
 from geometry_msgs.msg import Pose
 
+from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient
+from ai_worker_manipulation.robot_interface.gripper_controller import GripperInterface
+from ai_worker_manipulation.skill_primitives.environment import setup_environment
 
 
 def _pose(x, y, z):
@@ -14,19 +16,18 @@ def _pose(x, y, z):
     return p
 
 
-
-# demo_0513에서 IK 해 확인된 좌표
 PRE_GRASP = _pose(0.35, -0.25, 0.80)
 GRASP     = _pose(0.35, -0.25, 0.75)
 PRE_PLACE = _pose(0.35,  0.0, 0.80)
 PLACE     = _pose(0.35,  0.0, 0.75)
 
 
-
 def main():
-    client  = MoveItClient()
-    log     = client.node.get_logger()
-    gripper = GripperController(node=client.node)
+    rclpy.init()
+    node    = Node('demo_0521')
+    client  = MoveItClient(node)
+    log     = node.get_logger()
+    gripper = GripperInterface(node=node)
     setup_environment(client)
 
     gripper.open('right')
@@ -42,7 +43,7 @@ def main():
             return
 
         log.info("grasp 위치로 cartesian 이동")
-        if client.cartesian_move(GRASP).value != "succeeded":
+        if client.move_cartesian(GRASP).value != "succeeded":
             log.error("grasp cartesian 이동 실패")
             return
 
@@ -50,7 +51,7 @@ def main():
         gripper.close('right')
 
         log.info("pre-grasp 복귀")
-        client.cartesian_move(PRE_GRASP)
+        client.move_cartesian(PRE_GRASP)
 
         # ── Place ─────────────────────────────────────────────
         log.info("=== PLACE ===")
@@ -61,7 +62,7 @@ def main():
             return
 
         log.info("place 위치로 cartesian 이동")
-        if client.cartesian_move(PLACE).value != "succeeded":
+        if client.move_cartesian(PLACE).value != "succeeded":
             log.error("place cartesian 이동 실패")
             return
 
@@ -69,16 +70,16 @@ def main():
         gripper.open('right')
 
         log.info("pre-place 복귀")
-        client.cartesian_move(PRE_PLACE)
+        client.move_cartesian(PRE_PLACE)
 
         log.info("=== DONE ===")
 
     finally:
         gripper.open('right')
         client.move_to_home()
-        gripper.shutdown()
-        client.shutdown()
-
+        client.destroy()
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

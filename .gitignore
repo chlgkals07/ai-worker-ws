@@ -532,3 +532,11 @@ doc/
 ## GurumDDS
 *.ar
 
+
+##############################
+# Point cloud / capture outputs
+##############################
+wrist_outputs_*/
+wrist_pcd_outputs_*/
+wrist_pointcloud_*/
+
