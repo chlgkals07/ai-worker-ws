@@ -59,6 +59,17 @@ def in_workspace(x, y, z) -> bool:
     return X_MIN <= x <= X_MAX and Y_MIN <= y <= Y_MAX and Z_MIN <= z <= Z_MAX
 
 
+def orientation_feasible(qx, qy, qz, qw, arm: str = 'left') -> bool:
+    """Check wrist joint limits (joint6=pitch ±90°, joint7=roll ~±100°) from end-effector quaternion."""
+    roll, pitch, _ = Rotation.from_quat([qx, qy, qz, qw]).as_euler('xyz')
+    pitch_ok = -1.57 <= pitch <= 1.57
+    if arm == 'left':
+        roll_ok = -1.8201 <= roll <= 1.5804
+    else:
+        roll_ok = -1.5804 <= roll <= 1.8201
+    return roll_ok and pitch_ok
+
+
 def make_arrow(frame_id, idx, x, y, z, qx, qy, qz, qw, r, g, b) -> Marker:
     m = Marker()
     m.header.frame_id = frame_id
@@ -166,19 +177,22 @@ def main():
             continue
 
         p, o = result.position, result.orientation
-        in_ws = in_workspace(p.x, p.y, p.z)
+        in_ws   = in_workspace(p.x, p.y, p.z)
+        ori_ok  = orientation_feasible(o.x, o.y, o.z, o.w)
 
         log.info(f'  AFTER  [{TARGET_FRAME}]')
         log.info(f'    pos = ({p.x:.3f}, {p.y:.3f}, {p.z:.3f})')
         log.info(f'    ori = {rpy_str(o.x, o.y, o.z, o.w)}')
         log.info(f'    {"✓ IN WORKSPACE" if in_ws else "✗ OUT OF WORKSPACE"}')
+        log.info(f'    {"✓ ORIENTATION OK" if ori_ok else "✗ BAD ORIENTATION (wrist limits exceeded)"}')
         log.info('')
-        results.append((i, label, x, y, z, qx, qy, qz, qw, (p, o)))
+        results.append((i, label, x, y, z, qx, qy, qz, qw, (p, o, ori_ok)))
 
     # ── RViz publish loop ──────────────────────────────────────────────────────
     log.info('Publishing markers to RViz. Ctrl+C to stop.')
-    log.info('  RED   arrows = before (camera frame)')
-    log.info('  GREEN arrows = after  (base_link)  bright=in workspace  dim=out\n')
+    log.info('  RED    arrows = before (camera frame)')
+    log.info('  GREEN  arrows = after (base_link)  bright=in workspace  dim=out')
+    log.info('  ORANGE arrows = bad orientation (wrist joint limits exceeded)\n')
 
     while rclpy.ok():
         now = node.get_clock().now().to_msg()
@@ -196,14 +210,17 @@ def main():
             before_markers.markers.append(t)
 
             if after is not None:
-                p, o = after
+                p, o, ori_ok = after
                 in_ws = in_workspace(p.x, p.y, p.z)
-                # Bright green = in workspace, dim green = out
-                g_val = 1.0 if in_ws else 0.4
+                # orange = bad orientation, bright green = ok+in ws, dim green = ok+out ws
+                if not ori_ok:
+                    r_val, g_val, b_val = 1.0, 0.5, 0.0
+                else:
+                    r_val, g_val, b_val = 0.1, (1.0 if in_ws else 0.4), 0.1
                 m2 = make_arrow(TARGET_FRAME, i, p.x, p.y, p.z,
-                                o.x, o.y, o.z, o.w, 0.1, g_val, 0.1)
+                                o.x, o.y, o.z, o.w, r_val, g_val, b_val)
                 m2.header.stamp = now
-                ws_label = '✓' if in_ws else '✗'
+                ws_label = ('✓' if in_ws else '✗') + (' ori✓' if ori_ok else ' ori✗')
                 t2 = make_text(TARGET_FRAME, i, p.x, p.y, p.z,
                                f'{label} {ws_label}\n({p.x:.2f}, {p.y:.2f}, {p.z:.2f})')
                 t2.header.stamp = now

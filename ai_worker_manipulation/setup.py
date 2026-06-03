@@ -21,11 +21,16 @@ setup(
     license='Apache-2.0',
     entry_points={
         'console_scripts': [
-            'test_moveit_client = ai_worker_manipulation.tests.test_moveit_client:main',
-            'test_arm_motion    = ai_worker_manipulation.tests.test_arm_motion:main',
-            'test_gripper           = ai_worker_manipulation.tests.test_gripper:main',
-            'test_pick_and_place    = ai_worker_manipulation.tests.test_pick_and_place:main',
-            'test_tf_gpd            = ai_worker_manipulation.tests.test_tf_gpd:main',
+            'test_moveit_client      = ai_worker_manipulation.tests.test_moveit_client:main',
+            'test_arm_motion         = ai_worker_manipulation.tests.test_arm_motion:main',
+            'test_gripper            = ai_worker_manipulation.tests.test_gripper:main',
+            'test_pick_and_place     = ai_worker_manipulation.tests.test_pick_and_place:main',
+            'test_tf_gpd             = ai_worker_manipulation.tests.test_tf_gpd:main',
+            'gpd_wrist               = ai_worker_manipulation.gpd_wrist_node:main',
+            'move_wrist_capture_pose = ai_worker_manipulation.tests.move_wrist_capture_pose:main',
+            'demo_gpd_grasp          = ai_worker_manipulation.tests.demo_gpd_grasp:main',
+            'test_gpd_wrist150       = ai_worker_manipulation.tests.test_gpd_wrist150:main',
+            'demo_gpd_pick_place     = ai_worker_manipulation.tests.demo_gpd_pick_place:main',
         ],
     },
 )

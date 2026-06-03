@@ -84,11 +84,21 @@ class MoveItClient:
             callback_group=self._cb_group,
             use_move_group_action=True,
         )
+        self._moveit_lift = MoveIt2(
+            node=self._node,
+            joint_names=['lift_joint'],
+            base_link_name='base_link',
+            end_effector_name='lift_link',
+            group_name='lift',
+            callback_group=self._cb_group,
+            use_move_group_action=True,
+        )
 
         # Per-arm locks prevent concurrent callers from corrupting shared mutable state
         # (pipeline_id, max_velocity, etc.) on the same MoveIt2 instance.
-        self._lock_r = threading.Lock()
-        self._lock_l = threading.Lock()
+        self._lock_r    = threading.Lock()
+        self._lock_l    = threading.Lock()
+        self._lock_lift = threading.Lock()
 
         # Executor runs in a daemon thread — all ROS2 callbacks (action results,
         # joint state updates, FK responses) are handled automatically without
@@ -109,21 +119,15 @@ class MoveItClient:
     # ------------------------------------------------------------------
 
     def _wait_for_servers(self) -> None:
-        """Block until both arm MoveGroup action servers are reachable."""
-        for label, moveit in [('arm_r', self._moveit_r), ('arm_l', self._moveit_l)]:
+        """Block until all MoveGroup action servers (arms + lift) are reachable."""
+        _all = [('arm_r', self._moveit_r), ('arm_l', self._moveit_l), ('lift', self._moveit_lift)]
+        for label, moveit in _all:
             self._log.info(f'Waiting for move_group action server [{label}]...')
-            # pymoveit2 does not expose a public wait_for_server(). We access the
-            # mangled ActionClient directly. If pymoveit2 adds a public readiness
-            # API in the future, switch to that and drop this line.
             while not moveit._MoveIt2__move_action_client.wait_for_server(timeout_sec=1.0):
                 self._log.warn(f'[{label}] move_group not available, retrying...')
 
-        # wait_for_server() and server_is_ready() use different rcl checks.
-        # pymoveit2 calls server_is_ready() right before sending each goal —
-        # if that check still returns False (DDS discovery not yet stable),
-        # the goal is silently dropped. Poll here until it's stable.
         deadline = time.time() + 10.0
-        for label, moveit in [('arm_r', self._moveit_r), ('arm_l', self._moveit_l)]:
+        for label, moveit in _all:
             client = moveit._MoveIt2__move_action_client
             while not client.server_is_ready():
                 if time.time() > deadline:
@@ -318,6 +322,58 @@ class MoveItClient:
             self._configure(moveit2, velocity, acceleration, pipeline, planner)
             moveit2.move_to_configuration(joint_positions)
             return self._wait(moveit2, 'move_to_joints', arm, timeout)
+
+    def move_lift(
+        self,
+        position: float,
+        velocity: float = 0.2,
+        acceleration: float = 0.2,
+        timeout: float = 15.0,
+    ) -> MoveResult:
+        """Move lift_joint to position (metres). 0.0 = top, negative = down."""
+        self._guard()
+        self._log.info(f'[move_lift] target={position:.3f} m')
+
+        with self._lock_lift:
+            self._moveit_lift.motion_suceeded  = False
+            self._moveit_lift.max_velocity     = velocity
+            self._moveit_lift.max_acceleration = acceleration
+            self._moveit_lift.move_to_configuration([position])
+
+            start = time.time()
+            while self._moveit_lift.query_state() == MoveIt2State.IDLE:
+                if time.time() - start > 2.0:
+                    self._log.error('[move_lift] goal never left IDLE')
+                    return MoveResult.INVALID
+                time.sleep(0.01)
+
+            while self._moveit_lift.query_state() != MoveIt2State.IDLE:
+                if time.time() - start > timeout:
+                    self._log.error(f'[move_lift] TIMEOUT after {time.time()-start:.1f}s')
+                    return MoveResult.TIMEOUT
+                time.sleep(0.05)
+
+            elapsed = time.time() - start
+            if self._moveit_lift.motion_suceeded:
+                self._log.info(f'[move_lift] SUCCEEDED in {elapsed:.2f}s')
+                return MoveResult.SUCCEEDED
+
+            self._log.error(f'[move_lift] FAILED in {elapsed:.2f}s')
+            return MoveResult.FAILED
+
+    def move_to_home(
+        self,
+        arm: Arm = Arm.RIGHT,
+        velocity: float = 0.1,
+        acceleration: float = 0.1,
+    ) -> MoveResult:
+        # TODO: replace [0]*7 with actual home joint configuration once defined
+        return self.move_to_joints(
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            arm=arm,
+            velocity=velocity,
+            acceleration=acceleration,
+        )
 
     def move_cartesian(
         self,
