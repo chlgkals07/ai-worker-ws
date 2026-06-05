@@ -17,7 +17,7 @@ pick_and_place:
   # Motion parameters
   pre_grasp_offset: 0.15     # metres — step back along approach vector (cartesian mode)
   approach_height: 0.10      # metres — z offset above grasp/place pose (lift mode)
-  lift_home: 0.0             # lift_joint home position in metres (0.0 = top)
+  lift_home: 0.0             # lift_joint home position in metres (0.0 = fully raised)
   planning_retries: 3        # same-pose OMPL retries before trying jitter
   jitter_retries: 3          # jitter retries after same-pose retries exhausted
   jitter_std: 0.01           # gaussian std dev for position jitter in metres
