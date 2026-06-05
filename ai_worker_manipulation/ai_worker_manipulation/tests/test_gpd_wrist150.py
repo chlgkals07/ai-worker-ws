@@ -25,7 +25,7 @@ import numpy as np
 import open3d as o3d
 from scipy.spatial.transform import Rotation
 
-BASE_DIR  = "/root/ros2_ws/src/ai_worker/wrist_outputs_20/wrist_outputs_150_20260527_100328"
+BASE_DIR  = "/root/ros2_ws/src/ai_worker/ai_worker_manipulation/ai_worker_manipulation/data/wrist_pcd"
 PCD_DIR   = os.path.join(BASE_DIR, "mask_cloud")
 RGB_DIR   = os.path.join(BASE_DIR, "rgb")
 POSE_CSV  = os.path.join(BASE_DIR, "pose/target_pose.csv")
