@@ -6,10 +6,11 @@ Thin ROS 2 Action Server wrapping PickAndPlaceOrchestrator.
 All logic lives in the orchestrator — this node only handles ROS interfaces.
 """
 
+import threading
 import yaml
 
 import rclpy
-from rclpy.action import ActionServer
+from rclpy.action import ActionServer, GoalResponse
 from rclpy.node import Node
 
 import ament_index_python.packages as ament
@@ -40,17 +41,19 @@ class PickAndPlaceServer(Node):
     def __init__(self):
         super().__init__('pick_and_place_server')
 
+        self._busy = threading.Lock()
+
         config     = _load_config()
-        moveit     = MoveItClient(self)
+        self._moveit = MoveItClient(self)
         gripper    = GripperInterface(node=self)
         assessment = GraspAssessment(self)
         grasp      = GraspSkill(self, gripper, assessment)
-        pick       = PickSkill(self, moveit, gripper, grasp)
-        place      = PlaceSkill(self, moveit, gripper)
+        pick       = PickSkill(self, self._moveit, gripper, grasp)
+        place      = PlaceSkill(self, self._moveit, gripper)
 
         self._orchestrator = PickAndPlaceOrchestrator(
             node=self,
-            moveit=moveit,
+            moveit=self._moveit,
             gripper=gripper,
             pick_skill=pick,
             place_skill=place,
@@ -62,34 +65,45 @@ class PickAndPlaceServer(Node):
             PickAndPlace,
             'pick_and_place',
             self._execute_cb,
+            goal_callback=self._goal_cb,
         )
         self.get_logger().info('[PickAndPlaceServer] ready')
 
+    def _goal_cb(self, goal_request):
+        if self._busy.locked():
+            self.get_logger().warn('[PickAndPlaceServer] busy — rejecting goal')
+            return GoalResponse.REJECT
+        return GoalResponse.ACCEPT
+
     def _execute_cb(self, goal_handle):
-        goal = goal_handle.request
+        with self._busy:
+            goal = goal_handle.request
 
-        def _feedback(phase: str):
-            fb       = PickAndPlace.Feedback()
-            fb.phase = phase
-            goal_handle.publish_feedback(fb)
+            def _feedback(phase: str):
+                fb       = PickAndPlace.Feedback()
+                fb.phase = phase
+                goal_handle.publish_feedback(fb)
 
-        self._orchestrator._feedback_cb = _feedback
+            result_enum = self._orchestrator.run(
+                object_class=goal.object_class,
+                place_pose=goal.place_pose.pose,
+                feedback_cb=_feedback,
+            )
 
-        result_enum = self._orchestrator.run(
-            object_class=goal.object_class,
-            place_pose=goal.place_pose.pose,
-        )
+            result                = PickAndPlace.Result()
+            result.success        = result_enum == OrchestratorResult.SUCCESS
+            result.failure_reason = '' if result.success else result_enum.value
 
-        result                = PickAndPlace.Result()
-        result.success        = result_enum == OrchestratorResult.SUCCESS
-        result.failure_reason = '' if result.success else result_enum.value
+            if result.success:
+                goal_handle.succeed()
+            else:
+                goal_handle.abort()
 
-        if result.success:
-            goal_handle.succeed()
-        else:
-            goal_handle.abort()
+            return result
 
-        return result
+    def destroy_node(self):
+        self._moveit.destroy()
+        super().destroy_node()
 
 
 def main():

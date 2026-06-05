@@ -72,7 +72,12 @@ class PickAndPlaceOrchestrator:
 
     # ── Public API ────────────────────────────────────────────────────
 
-    def run(self, object_class: str, place_pose: Pose) -> OrchestratorResult:
+    def run(
+        self,
+        object_class: str,
+        place_pose: Pose,
+        feedback_cb: Optional[Callable[[str], None]] = None,
+    ) -> OrchestratorResult:
         """
         Execute a full pick-and-place cycle.
 
@@ -80,7 +85,9 @@ class PickAndPlaceOrchestrator:
         ----------
         object_class : Key in object_lut.json for grasp assessment thresholds.
         place_pose   : Target pose for placing the object.
+        feedback_cb  : Optional per-call feedback callback, overrides the instance default.
         """
+        _fb = feedback_cb or self._feedback_cb
         max_retries = self._cfg.get('max_retries', 1)
 
         for attempt in range(max_retries + 1):
@@ -88,12 +95,12 @@ class PickAndPlaceOrchestrator:
                 self._log.info(f'[Orchestrator] retry attempt {attempt}/{max_retries}')
 
             # 1. Move to capture pose
-            self._feedback_cb('moving_to_capture_pose')
+            _fb('moving_to_capture_pose')
             if not self._move_to_capture_pose():
                 return OrchestratorResult.PLANNING_FAILED
 
             # 2. Wait for GPD poses
-            self._feedback_cb('waiting_for_gpd')
+            _fb('waiting_for_gpd')
             grasp_poses = self._wait_for_gpd()
             if not grasp_poses:
                 return OrchestratorResult.NO_GPD_CANDIDATES
@@ -105,7 +112,7 @@ class PickAndPlaceOrchestrator:
             arm, grasp_pose = selection
 
             # 4. Pick
-            self._feedback_cb('picking')
+            _fb('picking')
             pick_result = self._pick.pick(
                 grasp_pose=grasp_pose,
                 arm=arm,
@@ -119,13 +126,13 @@ class PickAndPlaceOrchestrator:
 
             if pick_result != PickResult.SUCCESS:
                 self._log.warn(f'[Orchestrator] pick failed on attempt {attempt + 1}')
-                self._feedback_cb('returning_to_capture_pose')
+                _fb('returning_to_capture_pose')
                 self._gripper.open(arm.value)
                 self._gripper.wait_until_executed()
                 continue
 
             # 5. Place
-            self._feedback_cb('placing')
+            _fb('placing')
             place_result = self._place.place(
                 place_pose=place_pose,
                 arm=arm,
@@ -144,7 +151,7 @@ class PickAndPlaceOrchestrator:
                 return OrchestratorResult.PLANNING_FAILED
 
             # 6. Return home
-            self._feedback_cb('returning_home')
+            _fb('returning_home')
             self._moveit.move_to_home(arm=arm)
 
             self._log.info('[Orchestrator] pick and place SUCCEEDED')
