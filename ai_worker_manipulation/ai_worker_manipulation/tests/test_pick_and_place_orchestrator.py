@@ -16,7 +16,7 @@ from ai_worker_manipulation.robot_interface.moveit_client import MoveItClient, A
 from ai_worker_manipulation.robot_interface.gripper_controller import GripperInterface
 from ai_worker_manipulation.skill_primitives.grasp_assessment import GraspAssessment
 from ai_worker_manipulation.skill_primitives.grasp_skill import GraspSkill
-from ai_worker_manipulation.skill_primitives.pick_skill import PickSkill
+from ai_worker_manipulation.skill_primitives.pick_skill import PickSkill, PickResult
 from ai_worker_manipulation.skill_primitives.place_skill import PlaceSkill
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ def main():
     pick_result = pick.pick(grasp_pose, arm=Arm.RIGHT, object_name='ETC')
     log.info(f'Pick result: {pick_result.value}')
 
-    if pick_result.value == 'success':
+    if pick_result == PickResult.SUCCESS:
         log.info('--- Testing PlaceSkill ---')
         place_result = place.place(place_pose, arm=Arm.RIGHT)
         log.info(f'Place result: {place_result.value}')
