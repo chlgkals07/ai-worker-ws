@@ -7,7 +7,9 @@
 #   SUCCESS → arm at pre_grasp pose, object in gripper
 #   FAILURE → arm at pre_grasp pose, gripper open, bin as undisturbed as possible
 
+import random
 from enum import Enum
+from typing import Callable
 
 from scipy.spatial.transform import Rotation
 from geometry_msgs.msg import Pose
@@ -21,13 +23,12 @@ from ai_worker_manipulation.robot_interface.gripper_controller import GripperInt
 from ai_worker_manipulation.skill_primitives.grasp_skill import GraspSkill, GraspResult
 
 
-_PRE_GRASP_OFFSET = 0.15  # metres — step back along approach vector before entering bin
-
-
-class PickResult(Enum):
-    SUCCESS = 'success'
-    FAILURE = 'failure'
-    TIMEOUT = 'timeout'
+_PRE_GRASP_OFFSET  = 0.15
+_APPROACH_HEIGHT   = 0.10
+_LIFT_HOME         = 0.0
+_PLANNING_RETRIES  = 3
+_JITTER_RETRIES    = 3
+_JITTER_STD        = 0.01
 
 
 def pre_grasp_of(pose: Pose, offset: float = _PRE_GRASP_OFFSET) -> Pose:
@@ -46,6 +47,48 @@ def pre_grasp_of(pose: Pose, offset: float = _PRE_GRASP_OFFSET) -> Pose:
     pre.position.z    = pose.position.z - offset * approach_vector[2]
     pre.orientation   = pose.orientation
     return pre
+
+
+def _move_with_retry(
+    move_fn: Callable[[Pose], MoveResult],
+    pose: Pose,
+    log,
+    label: str,
+    same_retries: int = _PLANNING_RETRIES,
+    jitter_retries: int = _JITTER_RETRIES,
+    jitter_std: float = _JITTER_STD,
+) -> MoveResult:
+    """Retry move_fn(pose) with same pose, then with gaussian-jittered pose."""
+    result = MoveResult.FAILED
+
+    for attempt in range(same_retries):
+        result = move_fn(pose)
+        if result == MoveResult.SUCCEEDED:
+            return result
+        log.warn(
+            f'[{label}] same-pose attempt {attempt + 1}/{same_retries} → {result.value}'
+        )
+
+    for attempt in range(jitter_retries):
+        jittered = Pose()
+        jittered.position.x  = pose.position.x + random.gauss(0.0, jitter_std)
+        jittered.position.y  = pose.position.y + random.gauss(0.0, jitter_std)
+        jittered.position.z  = pose.position.z + random.gauss(0.0, jitter_std)
+        jittered.orientation = pose.orientation
+        result = move_fn(jittered)
+        log.warn(
+            f'[{label}] jitter attempt {attempt + 1}/{jitter_retries} → {result.value}'
+        )
+        if result == MoveResult.SUCCEEDED:
+            return result
+
+    return result
+
+
+class PickResult(Enum):
+    SUCCESS = 'success'
+    FAILURE = 'failure'
+    TIMEOUT = 'timeout'
 
 
 class PickSkill:
@@ -81,75 +124,104 @@ class PickSkill:
         arm: Arm = Arm.RIGHT,
         object_name: str = 'ETC',
         pre_grasp_offset: float = _PRE_GRASP_OFFSET,
+        approach_height: float = _APPROACH_HEIGHT,
+        lift_home: float = _LIFT_HOME,
+        planning_retries: int = _PLANNING_RETRIES,
+        jitter_retries: int = _JITTER_RETRIES,
+        jitter_std: float = _JITTER_STD,
     ) -> PickResult:
-        """
-        Execute a pick sequence for the given grasp pose.
-
-        Parameters
-        ----------
-        grasp_pose       : Target grasp pose (pre-filtered by caller).
-        arm              : Which arm to use.
-        object_name      : LUT key for grasp assessment thresholds.
-        pre_grasp_offset : Distance in metres to step back along approach vector.
-
-        Returns
-        -------
-        PickResult : SUCCESS or FAILURE.
-                     On both outcomes the arm is at pre_grasp and gripper state
-                     matches the outcome (closed on SUCCESS, open on FAILURE).
-        """
-        side    = arm.value
-        pre     = pre_grasp_of(grasp_pose, offset=pre_grasp_offset)
+        side = arm.value
+        pre  = pre_grasp_of(grasp_pose, offset=pre_grasp_offset)
 
         self._log.info(f'[PickSkill] [{side}] starting pick — object={object_name!r}')
 
-        # ── 1. Open gripper before entering the bin ───────────────────
+        # ── Mode 1: cartesian approach ────────────────────────────────────
+        self._log.info(f'[PickSkill] [{side}] Mode 1 (cartesian)')
         self._gripper.open(side)
         self._gripper.wait_until_executed()
 
-        # ── 2. Move to pre-grasp pose (free space) ────────────────────
-        self._log.info(f'[PickSkill] [{side}] moving to pre-grasp...')
-        result = self._moveit.move_to_pose(pre, arm=arm)
+        result = _move_with_retry(
+            lambda p, _arm=arm: self._moveit.move_to_pose(p, arm=_arm),
+            pre, self._log, f'PickSkill/{side}/pre_grasp',
+            same_retries=planning_retries,
+            jitter_retries=jitter_retries,
+            jitter_std=jitter_std,
+        )
         if result != MoveResult.SUCCEEDED:
-            self._log.error(
-                f'[PickSkill] [{side}] pre-grasp move failed — {result.value}'
+            self._log.error(f'[PickSkill] [{side}] pre-grasp failed — trying Mode 2')
+            return self._pick_lift(
+                grasp_pose, arm, object_name, approach_height, lift_home,
+                planning_retries, jitter_retries, jitter_std,
             )
-            return PickResult.FAILURE
 
-        # ── 3. Cartesian approach into the bin ────────────────────────
-        # Straight-line approach minimises disturbance to stacked objects.
-        self._log.info(f'[PickSkill] [{side}] cartesian approach to grasp pose...')
         result = self._moveit.move_cartesian(grasp_pose, arm=arm)
         if result != MoveResult.SUCCEEDED:
-            self._log.error(
-                f'[PickSkill] [{side}] cartesian approach failed — {result.value}'
-            )
+            self._log.warn(f'[PickSkill] [{side}] cartesian approach failed → Mode 2')
             self._moveit.move_to_pose(pre, arm=arm)
-            return PickResult.FAILURE
+            return self._pick_lift(
+                grasp_pose, arm, object_name, approach_height, lift_home,
+                planning_retries, jitter_retries, jitter_std,
+            )
 
-        # ── 4. Grasp + assess AT grasp pose (before any lift) ─────────
-        # If the grasp is unstable, GraspSkill re-opens automatically and we
-        # retract cleanly — the object drops back into the bin undisturbed.
-        self._log.info(f'[PickSkill] [{side}] grasping...')
         grasp_result = self._grasp.grasp(side, object_name=object_name)
-
         if grasp_result != GraspResult.SUCCESS:
-            self._log.error(
-                f'[PickSkill] [{side}] grasp FAILED — {grasp_result.value} — retracting'
-            )
-            # Gripper already re-opened by GraspSkill — just retract
+            self._log.error(f'[PickSkill] [{side}] grasp FAILED — retracting')
             self._moveit.move_to_pose(pre, arm=arm)
             return PickResult.FAILURE
 
-        # ── 5. Lift to pre-grasp (OMPL — reliable with object in hand) ─
-        self._log.info(f'[PickSkill] [{side}] grasp stable — lifting...')
-        result = self._moveit.move_to_pose(pre, arm=arm)
+        retract = self._moveit.move_cartesian(pre, arm=arm)
+        if retract != MoveResult.SUCCEEDED:
+            self._moveit.move_to_pose(pre, arm=arm)
+
+        self._log.info(f'[PickSkill] [{side}] pick SUCCEEDED (cartesian)')
+        return PickResult.SUCCESS
+
+    def _pick_lift(
+        self,
+        grasp_pose: Pose,
+        arm: Arm,
+        object_name: str,
+        approach_height: float,
+        lift_home: float,
+        planning_retries: int,
+        jitter_retries: int,
+        jitter_std: float,
+    ) -> PickResult:
+        """Mode 2: lift-based approach fallback."""
+        side = arm.value
+        self._log.info(f'[PickSkill] [{side}] Mode 2 (lift)')
+
+        # Hover directly above the grasp point — no approach-vector offset.
+        # The lift joint provides the Z descent, so only Z differs from grasp_pose.
+        pre_lift = Pose()
+        pre_lift.position.x  = grasp_pose.position.x
+        pre_lift.position.y  = grasp_pose.position.y
+        pre_lift.position.z  = grasp_pose.position.z + approach_height
+        pre_lift.orientation = grasp_pose.orientation
+
+        self._gripper.open(side)
+        self._gripper.wait_until_executed()
+        self._moveit.move_lift(lift_home)
+
+        result = _move_with_retry(
+            lambda p, _arm=arm: self._moveit.move_to_pose(p, arm=_arm),
+            pre_lift, self._log, f'PickSkill/{side}/pre_lift',
+            same_retries=planning_retries,
+            jitter_retries=jitter_retries,
+            jitter_std=jitter_std,
+        )
         if result != MoveResult.SUCCEEDED:
-            self._log.error(
-                f'[PickSkill] [{side}] lift failed — {result.value}'
-            )
-            # Object in gripper but arm stuck — report failure, let action server decide
+            self._log.error(f'[PickSkill] [{side}] Mode 2 pre-lift move failed')
             return PickResult.FAILURE
 
-        self._log.info(f'[PickSkill] [{side}] pick SUCCEEDED')
+        self._moveit.move_lift(lift_home - approach_height)
+
+        grasp_result = self._grasp.grasp(side, object_name=object_name)
+        if grasp_result != GraspResult.SUCCESS:
+            self._log.error(f'[PickSkill] [{side}] Mode 2 grasp FAILED — ascending')
+            self._moveit.move_lift(lift_home)
+            return PickResult.FAILURE
+
+        self._moveit.move_lift(lift_home)
+        self._log.info(f'[PickSkill] [{side}] pick SUCCEEDED (lift)')
         return PickResult.SUCCESS
