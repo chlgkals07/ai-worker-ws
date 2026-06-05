@@ -12,6 +12,8 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/data',
             ['ai_worker_manipulation/data/object_lut.json']),
+        ('share/' + package_name + '/config',
+            ['ai_worker_manipulation/config/pick_and_place.yaml']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

@@ -1,0 +1,23 @@
+pick_and_place:
+  # Arm selection
+  y_threshold: 0.0           # metres; pose.y >= threshold -> left arm, else right
+
+  # GPD
+  gpd_topic: /gpd/grasp_poses
+  gpd_timeout: 30.0          # seconds to wait for GPD output after goal received
+
+  # Capture pose — EE pose for moving to PCD acquisition position
+  # Values from move_wrist_capture_pose.py defaults
+  capture_pose_position: [0.35, -0.20, 1.20]
+  capture_pose_orientation: [0.086, -0.173, 0.015, 0.981]  # [x, y, z, w]
+
+  # Retry
+  max_retries: 1             # retry pick once on grasp failure before aborting
+
+  # Motion parameters
+  pre_grasp_offset: 0.15     # metres — step back along approach vector (cartesian mode)
+  approach_height: 0.10      # metres — z offset above grasp/place pose (lift mode)
+  lift_home: 0.0             # lift_joint home position in metres (0.0 = top)
+  planning_retries: 3        # same-pose OMPL retries before trying jitter
+  jitter_retries: 3          # jitter retries after same-pose retries exhausted
+  jitter_std: 0.01           # gaussian std dev for position jitter in metres
