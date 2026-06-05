@@ -53,6 +53,7 @@ _PLANNING_ERROR_CODES = {
 _JOINT_STATES_TIMEOUT  = 10.0
 _DEFAULT_PLANNING_TIME = 5.0
 _DEFAULT_PLANNING_ATTEMPTS = 3
+_IK_TIMEOUT = 5.0
 
 
 class MoveItClient:
@@ -476,32 +477,35 @@ class MoveItClient:
         conflict with the executor thread.
         """
         self._guard()
-        moveit2 = self._moveit(arm)
+        with self._lock(arm):
+            moveit2 = self._moveit(arm)
 
-        position = (pose.position.x, pose.position.y, pose.position.z)
-        quat     = (
-            pose.orientation.x,
-            pose.orientation.y,
-            pose.orientation.z,
-            pose.orientation.w,
-        )
+            position = (pose.position.x, pose.position.y, pose.position.z)
+            quat     = (
+                pose.orientation.x,
+                pose.orientation.y,
+                pose.orientation.z,
+                pose.orientation.w,
+            )
 
-        future = moveit2.compute_ik_async(position, quat)
-        if future is None:
-            self._log.warn(f'[check_reachable] [{arm.value}] compute_ik_async returned None')
-            return False
-
-        deadline = time.time() + 5.0
-        while not future.done():
-            if time.time() > deadline:
-                self._log.warn(f'[check_reachable] [{arm.value}] IK timeout')
+            future = moveit2.compute_ik_async(position, quat)
+            if future is None:
+                self._log.warn(f'[check_reachable] [{arm.value}] compute_ik_async returned None')
                 return False
-            time.sleep(0.02)
 
-        result    = moveit2.get_compute_ik_result(future)
-        reachable = result is not None
-        self._log.info(f'[check_reachable] [{arm.value}] reachable={reachable}')
-        return reachable
+            deadline = time.time() + _IK_TIMEOUT
+            while not future.done():
+                if time.time() > deadline:
+                    self._log.error(f'[check_reachable] [{arm.value}] IK timeout after {_IK_TIMEOUT}s')
+                    return False
+                time.sleep(0.05)
+
+            result = moveit2.get_compute_ik_result(future)
+            # get_compute_ik_result returns None on IK failure; a valid JointState on success.
+            # Guard against solvers that return an empty JointState instead of None.
+            reachable = result is not None and len(result.name) > 0
+            self._log.info(f'[check_reachable] [{arm.value}] reachable={reachable}')
+            return reachable
 
     # ------------------------------------------------------------------
     # Lifecycle
