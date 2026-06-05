@@ -36,6 +36,17 @@ class OrchestratorResult(Enum):
     TIMEOUT           = 'timeout'
 
 
+class OrchestratorPickResult:
+    """pick() 반환값 — 성공 시 arm과 result를 함께 반환."""
+    def __init__(self, result: OrchestratorResult, arm: 'Optional[Arm]' = None):
+        self.result = result
+        self.arm    = arm
+
+    @property
+    def success(self) -> bool:
+        return self.result == OrchestratorResult.SUCCESS
+
+
 class PickAndPlaceOrchestrator:
     """
     Orchestrates the full pick-and-place pipeline.
@@ -117,6 +128,7 @@ class PickAndPlaceOrchestrator:
                 grasp_pose=grasp_pose,
                 arm=arm,
                 object_name=object_class,
+                pre_grasp_offset=self._cfg.get('pre_grasp_offset', 0.15),
                 approach_height=self._cfg.get('approach_height', 0.10),
                 lift_home=self._cfg.get('lift_home', 0.0),
                 planning_retries=self._cfg.get('planning_retries', 3),
@@ -159,6 +171,93 @@ class PickAndPlaceOrchestrator:
 
         self._log.error(f'[Orchestrator] all {max_retries + 1} attempts failed')
         return OrchestratorResult.GRASP_FAILED
+
+    def pick(
+        self,
+        object_class: str = '',
+        feedback_cb: Optional[Callable[[str], None]] = None,
+    ) -> OrchestratorPickResult:
+        """Pick 단계만 실행. 완료 후 inspection pose로 이동해 대기."""
+        _fb = feedback_cb or self._feedback_cb
+        max_retries = self._cfg.get('max_retries', 1)
+
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                self._log.info(f'[Orchestrator] pick retry attempt {attempt}/{max_retries}')
+
+            _fb('moving_to_capture_pose')
+            if not self._move_to_capture_pose():
+                return OrchestratorPickResult(OrchestratorResult.PLANNING_FAILED)
+
+            _fb('waiting_for_gpd')
+            grasp_poses = self._wait_for_gpd()
+            if not grasp_poses:
+                return OrchestratorPickResult(OrchestratorResult.NO_GPD_CANDIDATES)
+
+            selection = self._select_arm(grasp_poses)
+            if selection is None:
+                return OrchestratorPickResult(OrchestratorResult.NO_REACHABLE_ARM)
+            arm, grasp_pose = selection
+
+            _fb('picking')
+            pick_result = self._pick.pick(
+                grasp_pose=grasp_pose,
+                arm=arm,
+                object_name=object_class,
+                approach_height=self._cfg.get('approach_height', 0.10),
+                lift_home=self._cfg.get('lift_home', 0.0),
+                planning_retries=self._cfg.get('planning_retries', 3),
+                jitter_retries=self._cfg.get('jitter_retries', 3),
+                jitter_std=self._cfg.get('jitter_std', 0.01),
+            )
+
+            if pick_result != PickResult.SUCCESS:
+                self._log.warn(f'[Orchestrator] pick failed on attempt {attempt + 1}')
+                _fb('returning_to_capture_pose')
+                self._gripper.open(arm.value)
+                self._gripper.wait_until_executed()
+                continue
+
+            _fb('moving_to_inspection_pose')
+            self._move_to_inspection_pose(arm)
+
+            self._log.info(f'[Orchestrator] pick SUCCEEDED with {arm.value} arm')
+            return OrchestratorPickResult(OrchestratorResult.SUCCESS, arm=arm)
+
+        self._log.error(f'[Orchestrator] all {max_retries + 1} pick attempts failed')
+        return OrchestratorPickResult(OrchestratorResult.GRASP_FAILED)
+
+    def place(
+        self,
+        place_pose: Pose,
+        arm: Arm,
+        feedback_cb: Optional[Callable[[str], None]] = None,
+    ) -> OrchestratorResult:
+        """Place 단계만 실행. 완료 후 home 복귀."""
+        _fb = feedback_cb or self._feedback_cb
+
+        _fb('placing')
+        place_result = self._place.place(
+            place_pose=place_pose,
+            arm=arm,
+            approach_height=self._cfg.get('approach_height', 0.10),
+            lift_home=self._cfg.get('lift_home', 0.0),
+            planning_retries=self._cfg.get('planning_retries', 3),
+            jitter_retries=self._cfg.get('jitter_retries', 3),
+            jitter_std=self._cfg.get('jitter_std', 0.01),
+        )
+
+        if place_result != PlaceResult.SUCCESS:
+            self._log.error('[Orchestrator] place failed — opening gripper and returning home')
+            self._gripper.open(arm.value)
+            self._gripper.wait_until_executed()
+            self._moveit.move_to_home(arm=arm)
+            return OrchestratorResult.PLANNING_FAILED
+
+        _fb('returning_home')
+        self._moveit.move_to_home(arm=arm)
+        self._log.info('[Orchestrator] place SUCCEEDED')
+        return OrchestratorResult.SUCCESS
 
     # ── Internal helpers ──────────────────────────────────────────────
 
@@ -225,3 +324,16 @@ class PickAndPlaceOrchestrator:
 
         self._log.error('[Orchestrator] no reachable arm for any GPD candidate')
         return None
+
+    def _move_to_inspection_pose(self, arm: Arm) -> bool:
+        pos = self._cfg.get('inspection_pose_position', [0.35, -0.20, 1.20])
+        ori = self._cfg.get('inspection_pose_orientation', [0.086, -0.173, 0.015, 0.981])
+        pose = Pose()
+        pose.position.x, pose.position.y, pose.position.z = pos
+        pose.orientation.x, pose.orientation.y = ori[0], ori[1]
+        pose.orientation.z, pose.orientation.w = ori[2], ori[3]
+        result = self._moveit.move_to_pose(pose, arm=arm)
+        if result != MoveResult.SUCCEEDED:
+            self._log.warn(f'[Orchestrator] move to inspection pose failed: {result.value}')
+            return False
+        return True
