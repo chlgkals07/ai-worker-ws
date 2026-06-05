@@ -1,3 +1,4 @@
+
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 project(gpd)
 set(CMAKE_BUILD_TYPE Debug)
@@ -141,6 +142,13 @@ add_executable(${PROJECT_NAME}_test_grasp_image src/tests/test_grasp_image.cpp)
 # add_executable(${PROJECT_NAME}_test_conv_layer src/tests/test_conv_layer.cpp)
 # add_executable(${PROJECT_NAME}_test_hdf5 src/tests/test_hdf5.cpp)
 
+## Python C API shared library
+# add_library(gpd_python SHARED src/detect_grasps_python.cpp)
+# target_link_libraries(gpd_python
+#   ${PROJECT_NAME}_grasp_detector
+#   ${PROJECT_NAME}_config_file
+#   ${PCL_LIBRARIES})
+
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_clustering
@@ -153,11 +161,11 @@ target_link_libraries(${PROJECT_NAME}_grasp_detector
   ${PROJECT_NAME}_candidates_generator
   ${PROJECT_NAME}_hand_geometry
   ${PROJECT_NAME}_hand_set
-  ${PROJECT_NAME}_config_file
+#   ${PROJECT_NAME}_config_file
   ${PROJECT_NAME}_plot)
 
 target_link_libraries(${PROJECT_NAME}_generate_candidates
-  ${PROJECT_NAME}_config_file
+#   ${PROJECT_NAME}_config_file
 ${PROJECT_NAME}_candidates_generator)
 
 # Linking for libraries
@@ -180,7 +188,7 @@ ${PROJECT_NAME}_finger_hand)
 
 target_link_libraries(${PROJECT_NAME}_hand_set
   ${PROJECT_NAME}_antipodal
-  ${PROJECT_NAME}_config_file
+#   ${PROJECT_NAME}_config_file
   ${PROJECT_NAME}_hand
   ${PROJECT_NAME}_hand_geometry
   ${PROJECT_NAME}_local_frame
@@ -204,7 +212,7 @@ target_link_libraries(${PROJECT_NAME}_plot
 ${PROJECT_NAME}_local_frame)
 
 target_link_libraries(${PROJECT_NAME}_candidates_generator
-  ${PROJECT_NAME}_config_file
+#   ${PROJECT_NAME}_config_file
   ${PROJECT_NAME}_hand_geometry
 ${PROJECT_NAME}_hand_search)
 
@@ -256,16 +264,16 @@ ${PCL_LIBRARIES})
 target_link_libraries(${PROJECT_NAME}_detect_grasps
   ${PROJECT_NAME}_grasp_detector
   ${PROJECT_NAME}_config_file
-${PCL_LIBRARIES})
+  ${PCL_LIBRARIES})
 
 target_link_libraries(${PROJECT_NAME}_label_grasps
   ${PROJECT_NAME}_grasp_detector
   ${PROJECT_NAME}_config_file
-${PCL_LIBRARIES})
+  ${PCL_LIBRARIES})
 
 target_link_libraries(${PROJECT_NAME}_cem_detect_grasps
   ${PROJECT_NAME}_sequential_importance_sampling
-  ${PROJECT_NAME}_config_file
+#   ${PROJECT_NAME}_config_file
   ${PCL_LIBRARIES})
 
 target_link_libraries(${PROJECT_NAME}_image_generator
