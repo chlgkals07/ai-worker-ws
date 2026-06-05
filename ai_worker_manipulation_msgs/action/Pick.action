@@ -1,0 +1,10 @@
+# Goal
+string object_class
+---
+# Result
+bool success
+string failure_reason
+string arm
+---
+# Feedback
+string phase
