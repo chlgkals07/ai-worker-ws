@@ -469,6 +469,40 @@ class MoveItClient:
         )
         return result.pose
 
+    def check_reachable(self, pose: Pose, arm: Arm = Arm.RIGHT) -> bool:
+        """Return True if a valid IK solution exists for pose on the given arm.
+
+        Uses compute_ik_async + manual future polling to avoid rclpy.spin_once()
+        conflict with the executor thread.
+        """
+        self._guard()
+        moveit2 = self._moveit(arm)
+
+        position = (pose.position.x, pose.position.y, pose.position.z)
+        quat     = (
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w,
+        )
+
+        future = moveit2.compute_ik_async(position, quat)
+        if future is None:
+            self._log.warn(f'[check_reachable] [{arm.value}] compute_ik_async returned None')
+            return False
+
+        deadline = time.time() + 5.0
+        while not future.done():
+            if time.time() > deadline:
+                self._log.warn(f'[check_reachable] [{arm.value}] IK timeout')
+                return False
+            time.sleep(0.02)
+
+        result    = moveit2.get_compute_ik_result(future)
+        reachable = result is not None
+        self._log.info(f'[check_reachable] [{arm.value}] reachable={reachable}')
+        return reachable
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
