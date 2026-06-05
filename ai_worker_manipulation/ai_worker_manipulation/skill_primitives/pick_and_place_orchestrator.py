@@ -38,7 +38,7 @@ class OrchestratorResult(Enum):
 
 class OrchestratorPickResult:
     """pick() 반환값 — 성공 시 arm과 result를 함께 반환."""
-    def __init__(self, result: OrchestratorResult, arm: 'Optional[Arm]' = None):
+    def __init__(self, result: OrchestratorResult, arm: Optional[Arm] = None):
         self.result = result
         self.arm    = arm
 
@@ -204,6 +204,7 @@ class PickAndPlaceOrchestrator:
                 grasp_pose=grasp_pose,
                 arm=arm,
                 object_name=object_class,
+                pre_grasp_offset=self._cfg.get('pre_grasp_offset', 0.15),
                 approach_height=self._cfg.get('approach_height', 0.10),
                 lift_home=self._cfg.get('lift_home', 0.0),
                 planning_retries=self._cfg.get('planning_retries', 3),
@@ -219,7 +220,8 @@ class PickAndPlaceOrchestrator:
                 continue
 
             _fb('moving_to_inspection_pose')
-            self._move_to_inspection_pose(arm)
+            if not self._move_to_inspection_pose(arm):
+                self._log.warn('[Orchestrator] inspection pose failed — continuing with pick result')
 
             self._log.info(f'[Orchestrator] pick SUCCEEDED with {arm.value} arm')
             return OrchestratorPickResult(OrchestratorResult.SUCCESS, arm=arm)
