@@ -1,12 +1,3 @@
-# skill_primitives/place_skill.py
-#
-# Executes a single place sequence given a pre-determined place pose.
-# Does NOT own retry logic — that belongs in the action server.
-#
-# Contract:
-#   SUCCESS → arm at pre_place pose, gripper open, object released
-#   FAILURE → arm at pre_place pose (best effort), gripper open
-
 from enum import Enum
 
 from geometry_msgs.msg import Pose
@@ -17,36 +8,32 @@ from ai_worker_manipulation.robot_interface.moveit_client import (
     MoveResult,
 )
 from ai_worker_manipulation.robot_interface.gripper_controller import GripperInterface
-from ai_worker_manipulation.skill_primitives.pick_skill import pre_grasp_of
+from ai_worker_manipulation.skill_primitives.pick_skill import (
+    _move_with_retry,
+    pre_grasp_of,
+    _APPROACH_HEIGHT,
+    _LIFT_HOME,
+    _PLANNING_RETRIES,
+    _JITTER_RETRIES,
+    _JITTER_STD,
+)
 
-
-_PRE_PLACE_OFFSET = 0.15  # metres — same offset logic as pre-grasp
+_PRE_PLACE_OFFSET = 0.15
 
 
 class PlaceResult(Enum):
     SUCCESS = 'success'
     FAILURE = 'failure'
-    TIMEOUT = 'timeout'
 
 
 class PlaceSkill:
     """
-    Single place sequence: pre-place → cartesian approach → release → cartesian retract.
-
-    Cartesian is used for both approach and retract — straight-line motion avoids
-    disturbing already-placed objects in the box.
-
-    The caller (action server) is responsible for:
-      - Providing the place pose (box pose or fallback pose)
-      - Deciding whether to retry on failure
+    Single place sequence.
+    Mode 1 (cartesian): pre_place → cartesian → open gripper → cartesian retract
+    Mode 2 (lift):      lift_home → pre_place_z+offset → lower lift → open gripper → raise lift
     """
 
-    def __init__(
-        self,
-        node,
-        moveit: MoveItClient,
-        gripper: GripperInterface,
-    ):
+    def __init__(self, node, moveit: MoveItClient, gripper: GripperInterface):
         self._node    = node
         self._log     = node.get_logger()
         self._moveit  = moveit
@@ -57,62 +44,93 @@ class PlaceSkill:
         place_pose: Pose,
         arm: Arm = Arm.RIGHT,
         pre_place_offset: float = _PRE_PLACE_OFFSET,
+        approach_height: float = _APPROACH_HEIGHT,
+        lift_home: float = _LIFT_HOME,
+        planning_retries: int = _PLANNING_RETRIES,
+        jitter_retries: int = _JITTER_RETRIES,
+        jitter_std: float = _JITTER_STD,
     ) -> PlaceResult:
-        """
-        Execute a place sequence for the given place pose.
-
-        Parameters
-        ----------
-        place_pose       : Target place pose.
-        arm              : Which arm to use.
-        pre_place_offset : Distance in metres to step back along approach vector.
-
-        Returns
-        -------
-        PlaceResult : SUCCESS or FAILURE.
-                      On both outcomes the arm is at pre_place and gripper is open.
-        """
         side = arm.value
         pre  = pre_grasp_of(place_pose, offset=pre_place_offset)
 
         self._log.info(f'[PlaceSkill] [{side}] starting place')
 
-        # ── 1. Move to pre-place pose (free space) ────────────────────
-        self._log.info(f'[PlaceSkill] [{side}] moving to pre-place...')
-        result = self._moveit.move_to_pose(pre, arm=arm)
+        # ── Mode 1: cartesian approach ────────────────────────────────────
+        self._log.info(f'[PlaceSkill] [{side}] Mode 1 (cartesian)')
+        result = _move_with_retry(
+            lambda p, _arm=arm: self._moveit.move_to_pose(p, arm=_arm),
+            pre, self._log, f'PlaceSkill/{side}/pre_place',
+            same_retries=planning_retries,
+            jitter_retries=jitter_retries,
+            jitter_std=jitter_std,
+        )
         if result != MoveResult.SUCCEEDED:
-            self._log.error(
-                f'[PlaceSkill] [{side}] pre-place move failed — {result.value}'
+            self._log.warn(f'[PlaceSkill] [{side}] pre-place failed → Mode 2')
+            return self._place_lift(
+                place_pose, arm, approach_height, lift_home,
+                planning_retries, jitter_retries, jitter_std,
             )
-            return PlaceResult.FAILURE
 
-        # ── 2. Cartesian approach to place pose ───────────────────────
-        # Straight-line approach avoids disturbing objects already in the box.
-        self._log.info(f'[PlaceSkill] [{side}] cartesian approach to place pose...')
         result = self._moveit.move_cartesian(place_pose, arm=arm)
         if result != MoveResult.SUCCEEDED:
-            self._log.error(
-                f'[PlaceSkill] [{side}] cartesian approach failed — {result.value}'
-            )
+            self._log.warn(f'[PlaceSkill] [{side}] cartesian approach failed → Mode 2')
             self._moveit.move_to_pose(pre, arm=arm)
-            return PlaceResult.FAILURE
+            return self._place_lift(
+                place_pose, arm, approach_height, lift_home,
+                planning_retries, jitter_retries, jitter_std,
+            )
 
-        # ── 3. Open gripper — release object ─────────────────────────
-        self._log.info(f'[PlaceSkill] [{side}] releasing object...')
         self._gripper.open(side)
         self._gripper.wait_until_executed()
         self._gripper.wait_motion()
 
-        # ── 4. Cartesian retract to pre-place ─────────────────────────
-        # Straight-line retract avoids knocking the just-placed object.
-        self._log.info(f'[PlaceSkill] [{side}] retracting...')
-        result = self._moveit.move_cartesian(pre, arm=arm)
-        if result != MoveResult.SUCCEEDED:
-            self._log.error(
-                f'[PlaceSkill] [{side}] cartesian retract failed — {result.value}'
-            )
+        retract = self._moveit.move_cartesian(pre, arm=arm)
+        if retract != MoveResult.SUCCEEDED:
             self._moveit.move_to_pose(pre, arm=arm)
+
+        self._log.info(f'[PlaceSkill] [{side}] place SUCCEEDED (cartesian)')
+        return PlaceResult.SUCCESS
+
+    def _place_lift(
+        self,
+        place_pose: Pose,
+        arm: Arm,
+        approach_height: float,
+        lift_home: float,
+        planning_retries: int,
+        jitter_retries: int,
+        jitter_std: float,
+    ) -> PlaceResult:
+        """Mode 2: lift-based approach."""
+        side = arm.value
+        self._log.info(f'[PlaceSkill] [{side}] Mode 2 (lift)')
+
+        # Hover directly above the place point — lift joint provides Z descent.
+        pre_lift = Pose()
+        pre_lift.position.x  = place_pose.position.x
+        pre_lift.position.y  = place_pose.position.y
+        pre_lift.position.z  = place_pose.position.z + approach_height
+        pre_lift.orientation = place_pose.orientation
+
+        self._moveit.move_lift(lift_home)
+
+        result = _move_with_retry(
+            lambda p, _arm=arm: self._moveit.move_to_pose(p, arm=_arm),
+            pre_lift, self._log, f'PlaceSkill/{side}/pre_lift',
+            same_retries=planning_retries,
+            jitter_retries=jitter_retries,
+            jitter_std=jitter_std,
+        )
+        if result != MoveResult.SUCCEEDED:
+            self._log.error(f'[PlaceSkill] [{side}] Mode 2 pre-lift move failed')
             return PlaceResult.FAILURE
 
-        self._log.info(f'[PlaceSkill] [{side}] place SUCCEEDED')
+        self._moveit.move_lift(lift_home - approach_height)
+
+        self._gripper.open(side)
+        self._gripper.wait_until_executed()
+        self._gripper.wait_motion()
+
+        self._moveit.move_lift(lift_home)
+        self._log.info(f'[PlaceSkill] [{side}] place SUCCEEDED (lift)')
         return PlaceResult.SUCCESS
