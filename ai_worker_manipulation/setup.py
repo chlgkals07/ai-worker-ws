@@ -36,6 +36,7 @@ setup(
             'test_pick_and_place_orchestrator = ai_worker_manipulation.tests.test_pick_and_place_orchestrator:main',
             'gpd_grasp_publisher              = ai_worker_manipulation.gpd_grasp_publisher:main',
             'test_gpd_wrist_live              = ai_worker_manipulation.tests.test_gpd_wrist_live:main',
+            'pick_and_place_server            = ai_worker_manipulation.nodes.pick_and_place_server:main',
         ],
     },
 )
