@@ -121,6 +121,7 @@ class PickAndPlaceOrchestrator:
                 self._log.warn(f'[Orchestrator] pick failed on attempt {attempt + 1}')
                 self._feedback_cb('returning_to_capture_pose')
                 self._gripper.open(arm.value)
+                self._gripper.wait_until_executed()
                 continue
 
             # 5. Place
@@ -136,6 +137,10 @@ class PickAndPlaceOrchestrator:
             )
 
             if place_result != PlaceResult.SUCCESS:
+                self._log.error('[Orchestrator] place failed — opening gripper and returning home')
+                self._gripper.open(arm.value)
+                self._gripper.wait_until_executed()
+                self._moveit.move_to_home(arm=arm)
                 return OrchestratorResult.PLANNING_FAILED
 
             # 6. Return home
@@ -192,10 +197,14 @@ class PickAndPlaceOrchestrator:
         return poses
 
     def _select_arm(self, poses: list[Pose]) -> Optional[tuple[Arm, Pose]]:
-        """Y-threshold arm selection with IK reachability confirmation."""
-        y_threshold = self._cfg.get('y_threshold', 0.0)
+        """Y-threshold arm selection with IK reachability confirmation.
 
-        for pose in poses:
+        Evaluates at most 5 candidates to bound IK check time (5s each worst case).
+        """
+        y_threshold   = self._cfg.get('y_threshold', 0.0)
+        max_candidates = 5
+
+        for pose in poses[:max_candidates]:
             primary   = Arm.LEFT if pose.position.y >= y_threshold else Arm.RIGHT
             secondary = Arm.RIGHT if primary == Arm.LEFT else Arm.LEFT
 
