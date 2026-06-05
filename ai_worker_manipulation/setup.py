@@ -33,6 +33,9 @@ setup(
             'demo_gpd_grasp          = ai_worker_manipulation.tests.demo_gpd_grasp:main',
             'test_gpd_wrist150       = ai_worker_manipulation.tests.test_gpd_wrist150:main',
             'demo_gpd_pick_place     = ai_worker_manipulation.tests.demo_gpd_pick_place:main',
+            'test_pick_and_place_orchestrator = ai_worker_manipulation.tests.test_pick_and_place_orchestrator:main',
+            'gpd_grasp_publisher              = ai_worker_manipulation.gpd_grasp_publisher:main',
+            'test_gpd_wrist_live              = ai_worker_manipulation.tests.test_gpd_wrist_live:main',
         ],
     },
 )
